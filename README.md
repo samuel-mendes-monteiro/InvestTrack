@@ -116,17 +116,19 @@ net   = gross − tax withheld   (15% on JCP; dividends and FII distributions: n
 - Since it is recalculated from the trades, fixing an old trade fixes the income too.
 - For what B3 doesn't publish (BDRs, income older than the history B3 shows), income can be entered manually, as the total shown in the broker statement.
 
-**Fixed income** has no market price: its value comes from a formula, using the CDI already downloaded for the benchmarks.
+**Fixed income** has no market price: its value comes from a formula, using the CDI already downloaded for the benchmarks and the IPCA from the Central Bank (SGS series 433).
 
 ```
 % of CDI:   value = amount × Π (1 + CDI_day × percentage)      (each business day)
 pre-fixed:  value = amount × (1 + annual_rate) ^ (business_days / 252)
+IPCA+:      value = pre-fixed value × IPCA accumulated since the start
 ```
 
 - Business days come from the CDI series itself: the Central Bank publishes a rate only on business days, so it doubles as the official calendar.
 - If redeemed today, a CDB pays IOF on the gain within 30 days (96% on day 1 down to 0% on day 30) and income tax on the rest of the gain: 22.5% up to 180 days, 20% up to 360, 17.5% up to 720 and 15% after that. LCI and LCA are tax exempt.
 - Applying is an inflow and redeeming an outflow, so fixed income joins the portfolio's value and its TWR. An LCI at 100% of the CDI earns exactly the CDI.
-- Redemptions are of the whole investment; partial redemptions and IPCA+ are not supported yet.
+- For IPCA+, each month's IPCA is spread over its calendar days. A month's IPCA only comes out around the 10th of the next one; until then the last published month is repeated and the value is flagged as an estimate. (Banks and the Tesouro use an anniversary date and business days; over whole months the result is the same.)
+- **Partial redemptions** keep the rest running. Since the value grows in proportion to the money invested, withdrawing R from a value V leaves (1 − R/V) of everything, principal included. Each withdrawal pays tax on its own share of the gain, at the rate for the days since the start. A withdrawal must be smaller than the value on that day (taking everything is the full redemption) and on a business day with a known value.
 
 **Importing B3's trade statement** (Área do Investidor → Extratos → Negociação, in Excel) shows a preview first. Each row is:
 
@@ -172,6 +174,7 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 - **New tables, no migration.** Income has no quantity or price, so it isn't stored as a kind of trade. Adding tables is the safest schema change: existing databases get them on startup and no existing column changes.
 - **Passwords are hashed with Argon2id**, OWASP's first recommendation: a random salt per password and a deliberately slow, memory-hungry function, so a stolen database is expensive to brute force. Lengths follow NIST (at least 8, long passphrases allowed, with an upper bound because hashing has a cost). Hashes made with weaker parameters are upgraded at the next login, the only moment the password is available.
 - **Sessions are opaque tokens, not JWTs.** The client gets 256 random bits; the database keeps only their SHA-256, so reading the database doesn't give anyone a session. Logging out deletes the row, which a JWT can't do without a list of revoked tokens.
+- **Failed logins are limited**: 5 per email and IP, and 20 per IP, in a sliding 15-minute window (`429` with `Retry-After`). Counting by email and IP together, not by email alone, means nobody can lock a victim out by typing their email wrong on purpose. The counts are in memory, which is enough for a single server process.
 - **Login errors don't reveal accounts.** A wrong email and a wrong password give the same message, and take the same time: an unknown email is still checked against a dummy hash.
 - **Every row of user data has an owner, and every query filters by it.** Another user's row by id answers 404, exactly like a missing one, so ids reveal nothing. Market data (quotes, CDI, B3 events) is shared. A test walks through every route of the API and fails if one answers without a session, so a future endpoint can't forget it.
 - **The first real migration.** Until v0.4, new tables were enough (`create_all`). Adding an owner to tables that already have data needs migrations, so v0.5 brings Alembic. The baseline migration only creates missing tables, so databases from before and new ones follow the same path; the first account created adopts the data from before accounts existed. `bonus_costs` changes its primary key, which Alembic can't detect, so it is rebuilt by hand.
@@ -242,11 +245,12 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 | Method | Route | Description |
 |---|---|---|
 | `POST` | `/auth/register` | Create an account (409 if the email is taken) |
-| `POST` | `/auth/login` | Get a session token, valid for 30 days |
+| `POST` | `/auth/login` | Get a session token, valid for 30 days (429 after too many failures) |
 | `POST` | `/auth/logout` | End the session |
 | `GET` | `/auth/me` | The logged-in user |
 | `POST` | `/operations` | Record a buy or sell (422 if selling more than owned) |
 | `GET` | `/operations` | List operations, optionally filtered by `?ticker=` |
+| `PUT` | `/operations/{id}` | Edit an operation, e.g. to add the fees of an imported trade (409 if a sale or an income would be left without shares) |
 | `DELETE` | `/operations/{id}` | Delete an operation (409 if a later sale or an income depends on it) |
 | `GET` | `/income` | Computed and manual income, including pending; filter by `?ticker=` and `?year=` |
 | `GET` | `/income/monthly` | Net income received per month and type, optionally for one `?year=` |
@@ -256,9 +260,11 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 | `PUT` | `/stock-events/{ticker}/{date}/unit-cost` | Attributed cost of a bonus event (404 if there is no bonus on that date) |
 | `DELETE` | `/stock-events/{ticker}/{date}/unit-cost` | Back to zero cost |
 | `GET` | `/portfolio` | Positions, live prices, income received and portfolio totals |
-| `POST` | `/fixed-income` | Register a CDB, LCI or LCA |
+| `POST` | `/fixed-income` | Register a CDB, LCI or LCA: % of CDI, pre-fixed or IPCA+ |
 | `GET` | `/fixed-income` | Each investment with gross value, IOF, income tax and net value |
 | `PUT` | `/fixed-income/{id}/redemption` | Early redemption on a date (`null` undoes it) |
+| `POST` | `/fixed-income/{id}/partial-redemptions` | Withdraw part of an investment (422 if not less than its value that day) |
+| `DELETE` | `/fixed-income/{id}/partial-redemptions/{rid}` | Undo a partial redemption |
 | `DELETE` | `/fixed-income/{id}` | Delete an investment |
 | `POST` | `/imports/b3/preview` | What importing a B3 trade statement (raw `.xlsx` body) would add; saves nothing |
 | `POST` | `/imports/b3` | Import the statement's new trades in one transaction |
@@ -287,9 +293,9 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 - [x] Attributed cost of bonus shares (*custo atribuído*)
 - [x] **v0.3:** historical performance with time-weighted return (TWR), compared with CDI and Ibovespa
 - [x] **v0.4:** fixed income (CDB, LCI, LCA)
-- [ ] Partial redemptions and IPCA+ fixed income
 - [x] **v0.5:** login and multiple users
 - [x] **v0.6:** import B3 trade statements
+- [x] **v0.7:** partial redemptions and IPCA+ fixed income, editing operations, login rate limiting
 - [ ] **v1.0:** React frontend and cloud deployment
 
 ## License
