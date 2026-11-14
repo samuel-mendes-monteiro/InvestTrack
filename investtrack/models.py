@@ -263,3 +263,31 @@ class FixedIncomeRecord(Base):
     maturity: Mapped[date] = mapped_column(Date)
     amount: Mapped[Decimal] = mapped_column(SafeDecimal)
     redeemed_on: Mapped[date | None] = mapped_column(Date)
+
+    # Loaded with the investment (selectin: one query for all of them) and
+    # deleted with it: a withdrawal means nothing without its investment.
+    partial_redemptions: Mapped[list["PartialRedemptionRecord"]] = relationship(
+        back_populates="investment",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="PartialRedemptionRecord.date, PartialRedemptionRecord.id",
+    )
+
+
+class PartialRedemptionRecord(Base):
+    """Money withdrawn from a fixed income investment that keeps running.
+
+    No user_id: the owner is the investment's, and every access goes
+    through the investment, which is already checked.
+    """
+
+    __tablename__ = "partial_redemptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fixed_income_id: Mapped[int] = mapped_column(
+        ForeignKey("fixed_income.id", ondelete="CASCADE"), index=True
+    )
+    date: Mapped[date] = mapped_column(Date)
+    gross: Mapped[Decimal] = mapped_column(SafeDecimal)
+
+    investment: Mapped[FixedIncomeRecord] = relationship(back_populates="partial_redemptions")

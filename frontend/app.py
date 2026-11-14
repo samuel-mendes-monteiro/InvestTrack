@@ -303,6 +303,27 @@ def on_redeem(investment_id: int, day: date | None) -> None:
     flash("success", "Resgate registrado." if day else "Resgate desfeito.")
 
 
+def on_partial_redemption(investment_id: int) -> None:
+    s = st.session_state
+    try:
+        gross = field_decimal("Valor resgatado", s.fi_partial_gross)
+        api.add_partial_redemption(investment_id, s.fi_partial_date.isoformat(), str(gross))
+    except (ValueError, ApiError) as e:
+        flash("error", f"Resgate parcial não registrado: {e}")
+        return
+    flash("success", f"Resgate parcial de {brl(gross)} registrado.")
+    s.fi_partial_gross = ""
+
+
+def on_delete_partial_redemption(investment_id: int, redemption_id: int) -> None:
+    try:
+        api.delete_partial_redemption(investment_id, redemption_id)
+    except ApiError as e:
+        flash("error", f"Não foi possível apagar: {e}")
+        return
+    flash("success", "Resgate parcial apagado.")
+
+
 def on_delete_fixed_income(investment_id: int) -> None:
     try:
         api.delete_fixed_income(investment_id)
@@ -836,7 +857,11 @@ elif view == "Renda fixa":
             return sum(Decimal(f[key]) for f in active if f[key] is not None)
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Aplicado", brl(total("amount")))
+        c1.metric(
+            "Aplicado",
+            brl(total("principal")),
+            help="Dinheiro aplicado que continua investido, descontados os resgates parciais.",
+        )
         c2.metric("Valor bruto", brl(total("gross")))
         c3.metric(
             "Valor líquido",
@@ -855,6 +880,11 @@ elif view == "Renda fixa":
                         "Aplicação": date.fromisoformat(f["start"]).strftime("%d/%m/%Y"),
                         "Vencimento": date.fromisoformat(f["maturity"]).strftime("%d/%m/%Y"),
                         "Aplicado": brl(f["amount"]),
+                        "Resgates parciais": brl(
+                            sum(Decimal(p["gross"]) for p in f["partial_redemptions"])
+                        )
+                        if f["partial_redemptions"]
+                        else "",
                         "Bruto": brl(f["gross"]),
                         "IOF + IR": brl(
                             Decimal(f["iof"]) + Decimal(f["ir"]) if f["ir"] is not None else None
@@ -899,7 +929,75 @@ elif view == "Renda fixa":
                 on_click=on_delete_fixed_income,
                 args=(chosen["id"],),
             )
-            st.caption("O resgate é sempre do valor total da aplicação.")
+            st.caption(
+                "Aqui o resgate é do valor total. Para tirar só uma parte, use o resgate parcial."
+            )
+
+        if active:
+            with st.expander("Resgate parcial"):
+                options = {fi_label(f): f for f in active}
+                chosen = options[st.selectbox("Aplicação", list(options), key="fi_partial_of")]
+                c1, c2 = st.columns(2)
+                c1.date_input(
+                    "Data",
+                    key="fi_partial_date",
+                    value=date.today(),
+                    max_value=date.today(),
+                    format="DD/MM/YYYY",
+                )
+                c2.text_input(
+                    "Valor resgatado, bruto (R$)",
+                    key="fi_partial_gross",
+                    placeholder="1.000,00",
+                    help="Antes do IR e do IOF, como aparece no extrato do banco.",
+                )
+                st.button(
+                    "Registrar resgate parcial",
+                    type="primary",
+                    on_click=on_partial_redemption,
+                    args=(chosen["id"],),
+                )
+                st.caption(
+                    "O restante continua rendendo. Cada resgate paga IR só sobre a parte "
+                    "do rendimento que ele levou, pela alíquota do tempo desde a aplicação."
+                )
+                if chosen["partial_redemptions"]:
+                    st.dataframe(
+                        pd.DataFrame(
+                            [
+                                {
+                                    "Data": date.fromisoformat(p["date"]).strftime("%d/%m/%Y"),
+                                    "Bruto": brl(p["gross"]),
+                                    "IOF + IR": brl(
+                                        Decimal(p["iof"]) + Decimal(p["ir"])
+                                        if p["ir"] is not None
+                                        else None
+                                    ),
+                                    "Líquido": brl(p["net"]),
+                                }
+                                for p in chosen["partial_redemptions"]
+                            ]
+                        ),
+                        hide_index=True,
+                        width="stretch",
+                    )
+                    labels = {
+                        f"{date.fromisoformat(p['date']):%d/%m/%Y} · {brl(p['gross'])}": p["id"]
+                        for p in chosen["partial_redemptions"]
+                    }
+                    label = st.selectbox(
+                        "Apagar resgate parcial",
+                        list(labels),
+                        index=None,
+                        placeholder="Escolha o resgate a apagar",
+                        key="fi_partial_delete",
+                    )
+                    st.button(
+                        "Apagar resgate",
+                        disabled=label is None,
+                        on_click=on_delete_partial_redemption,
+                        args=(chosen["id"], labels.get(label)),
+                    )
 
 # --- income view -------------------------------------------------------------
 

@@ -740,6 +740,58 @@ def test_delete_fixed_income(fi_client):
     assert fi_client.delete(f"/fixed-income/{created['id']}").status_code == 404
 
 
+def test_partial_redemption(fi_client):
+    created = fi_client.post("/fixed-income", json=fixed(product="CDB")).json()
+    url = f"/fixed-income/{created['id']}/partial-redemptions"
+    r = fi_client.post(url, json={"date": "2026-03-03", "gross": "505"})  # half of 1010
+    assert r.status_code == 201
+    body = r.json()
+    assert (body["gross"], body["principal"], body["gross_return"]) == ("510.05", "500.00", "2.01")
+    [withdrawal] = body["partial_redemptions"]
+    assert (withdrawal["gross"], withdrawal["iof"]) == ("505.00", "4.80")  # 96% of the 5 gain
+
+    r = fi_client.delete(f"{url}/{withdrawal['id']}")
+    assert (r.status_code, r.json()["gross"], r.json()["partial_redemptions"]) == (
+        200,
+        "1020.10",
+        [],
+    )
+    assert fi_client.delete(f"{url}/{withdrawal['id']}").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "payload, code",
+    [
+        ({"date": "2026-03-03", "gross": "1010"}, "REDEMPTION_TOO_LARGE"),
+        ({"date": "2026-03-02", "gross": "10"}, "INVALID_PARTIAL_REDEMPTION"),  # the start
+        ({"date": "2026-03-01", "gross": "10"}, "INVALID_PARTIAL_REDEMPTION"),
+    ],
+)
+def test_partial_redemption_errors(fi_client, payload, code):
+    created = fi_client.post("/fixed-income", json=fixed()).json()
+    r = fi_client.post(f"/fixed-income/{created['id']}/partial-redemptions", json=payload)
+    assert (r.status_code, r.json()["detail"]["code"]) == (422, code)
+    assert fi_client.get("/fixed-income").json()[0]["partial_redemptions"] == []
+
+
+def test_partial_redemption_on_a_day_without_value(fi_client):
+    with performance_client(ONE_PERCENT_A_DAY) as c:
+        created = c.post("/fixed-income", json=fixed(start="2026-02-27")).json()
+        r = c.post(  # a Sunday, inside the period
+            f"/fixed-income/{created['id']}/partial-redemptions",
+            json={"date": "2026-03-01", "gross": "10"},
+        )
+        assert r.json()["detail"]["code"] == "VALUE_NOT_KNOWN"
+
+
+def test_deleting_an_investment_deletes_its_withdrawals(fi_client):
+    created = fi_client.post("/fixed-income", json=fixed()).json()
+    url = f"/fixed-income/{created['id']}/partial-redemptions"
+    fi_client.post(url, json={"date": "2026-03-03", "gross": "100"})
+    fi_client.delete(f"/fixed-income/{created['id']}")
+    assert fi_client.delete(f"{url}/1").status_code == 404
+
+
 def test_portfolio_totals_include_fixed_income_still_invested(fi_client):
     fi_client.post("/fixed-income", json=fixed())
     redeemed = fi_client.post("/fixed-income", json=fixed()).json()
@@ -816,6 +868,8 @@ def test_other_users_rows_look_missing(shared_engine):
             assert bia.delete(f"/fixed-income/{investment['id']}").status_code == 404
             url = f"/fixed-income/{investment['id']}/redemption"
             assert bia.put(url, json={"redeemed_on": None}).status_code == 404
+            partial = f"/fixed-income/{investment['id']}/partial-redemptions"
+            assert bia.post(partial, json={"date": "2026-03-03", "gross": "1"}).status_code == 404
         assert len(ana.get("/operations").json()) == 1
 
 

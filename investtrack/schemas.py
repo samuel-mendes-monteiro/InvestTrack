@@ -186,6 +186,20 @@ class RedeemIn(BaseModel):
     redeemed_on: PastDate | None = Field(description="None undoes an early redemption")
 
 
+class PartialRedemptionIn(BaseModel):
+    date: PastDate = Field(description="A business day after the start")
+    gross: Decimal = Field(gt=0, description="Amount withdrawn, before taxes", examples=["1000"])
+
+
+class PartialRedemptionOut(BaseModel):
+    id: int
+    date: date
+    gross: Money
+    iof: Money | None = Field(description="None until that day's CDI is known")
+    ir: Money | None
+    net: Money | None
+
+
 class FixedIncomeOut(BaseModel):
     id: int
     name: str
@@ -196,6 +210,8 @@ class FixedIncomeOut(BaseModel):
     maturity: date
     amount: Money
     redeemed_on: date | None
+    partial_redemptions: list[PartialRedemptionOut]
+    principal: Money = Field(description="Amount invested still held, after partial redemptions")
     status: str = Field(description="ACTIVE, REDEEMED or MATURED")
     as_of: date | None = Field(description="Day of the values below; None until the CDI is known")
     gross: Money | None

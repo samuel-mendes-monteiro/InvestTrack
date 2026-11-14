@@ -122,6 +122,14 @@ def test_edit_conflict_is_translated():
     )
 
 
+def test_redemption_too_large_is_translated():
+    body = (
+        '{"detail": {"code": "REDEMPTION_TOO_LARGE", "message": "...",'
+        ' "date": "2026-03-03", "available": "1010.0001"}}'
+    )
+    assert api_error_for(422, body).startswith("Em 03/03/2026 a aplicação valia R$ 1.010,00:")
+
+
 def test_unknown_code_falls_back_to_english_message():
     body = '{"detail": {"code": "SOMETHING_NEW", "message": "Something new happened"}}'
     assert api_error_for(422, body) == "Something new happened"

@@ -34,7 +34,14 @@ from investtrack.b3_statement import MAX_FILE_SIZE, StatementError, read_stateme
 from investtrack.brapi import BrapiClient
 from investtrack.db import create_db_engine, init_db
 from investtrack.events import EventSource, StoredEvents
-from investtrack.fixed_income import FixedIncome, daily_series, value_on
+from investtrack.fixed_income import (
+    FixedIncome,
+    PartialRedemption,
+    RedemptionTooLargeError,
+    daily_series,
+    partial_valuations,
+    value_on,
+)
 from investtrack.income import (
     Income,
     IncomeWithoutPositionError,
@@ -59,6 +66,8 @@ from investtrack.schemas import (
     MonthlyIncomeOut,
     OperationCreate,
     OperationOut,
+    PartialRedemptionIn,
+    PartialRedemptionOut,
     PerformanceOut,
     PerformancePoint,
     PortfolioOut,
@@ -229,6 +238,21 @@ def fixed_income_to_out(
     else:
         status = "ACTIVE"
     valuation = value_on(investment, investment.end, days, cdi) if days else None
+    withdrawals = [
+        PartialRedemptionOut(
+            id=r.id,
+            date=r.date,
+            gross=r.gross,
+            iof=v.iof if v else None,
+            ir=v.ir if v else None,
+            net=v.net if v else None,
+        )
+        # Both lists are sorted by date: the record's by its order_by, the
+        # domain's in FixedIncome itself (same-day ties keep the record order).
+        for r, v in zip(
+            record.partial_redemptions, partial_valuations(investment, days, cdi), strict=True
+        )
+    ]
     return FixedIncomeOut(
         id=record.id,
         name=investment.name,
@@ -239,13 +263,15 @@ def fixed_income_to_out(
         maturity=investment.maturity,
         amount=investment.amount,
         redeemed_on=investment.redeemed_on,
+        partial_redemptions=withdrawals,
+        principal=valuation.principal if valuation else investment.amount,
         status=status,
         as_of=valuation.day if valuation else None,
         gross=valuation.gross if valuation else None,
         iof=valuation.iof if valuation else None,
         ir=valuation.ir if valuation else None,
         net=valuation.net if valuation else None,
-        gross_return=(valuation.gross / investment.amount - 1) * 100 if valuation else None,
+        gross_return=valuation.gross_return if valuation else None,
     )
 
 
@@ -724,6 +750,68 @@ def create_app(
             raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
         except ValueError as e:
             raise api_error(422, "INVALID_FIXED_INCOME", e) from e
+        days, cdi = business_days(market, record.start)
+        return fixed_income_to_out(record, repository.fixed_income_to_domain(record), days, cdi)
+
+    @app.post(
+        "/fixed-income/{investment_id}/partial-redemptions",
+        status_code=status.HTTP_201_CREATED,
+        tags=["fixed income"],
+        responses={
+            404: {"model": ErrorOut, "description": "Not found"},
+            422: {
+                "model": ErrorOut,
+                "description": "Outside the period, value not known, or more than there is",
+            },
+        },
+    )
+    def add_partial_redemption(
+        investment_id: int,
+        payload: PartialRedemptionIn,
+        session: SessionDep,
+        user: UserDep,
+        market: MarketDep,
+    ) -> FixedIncomeOut:
+        """Withdraw part of the money; the rest keeps running."""
+        try:
+            redemption = PartialRedemption(payload.date, payload.gross)
+            record = repository.get_fixed_income(session, user.id, investment_id)
+            days, cdi = business_days(market, record.start)
+            record = repository.add_partial_redemption(
+                session, user.id, investment_id, redemption, days, cdi
+            )
+        except repository.FixedIncomeNotFoundError as e:
+            raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
+        except RedemptionTooLargeError as e:
+            error = api_error(422, "REDEMPTION_TOO_LARGE", e)
+            error.detail |= {"date": e.day.isoformat(), "available": str(e.available)}
+            raise error from e
+        except repository.ValueNotKnownError as e:
+            raise api_error(422, "VALUE_NOT_KNOWN", e) from e
+        except ValueError as e:
+            raise api_error(422, "INVALID_PARTIAL_REDEMPTION", e) from e
+        return fixed_income_to_out(record, repository.fixed_income_to_domain(record), days, cdi)
+
+    @app.delete(
+        "/fixed-income/{investment_id}/partial-redemptions/{redemption_id}",
+        tags=["fixed income"],
+        responses={404: {"model": ErrorOut, "description": "Not found"}},
+    )
+    def delete_partial_redemption(
+        investment_id: int,
+        redemption_id: int,
+        session: SessionDep,
+        user: UserDep,
+        market: MarketDep,
+    ) -> FixedIncomeOut:
+        try:
+            record = repository.delete_partial_redemption(
+                session, user.id, investment_id, redemption_id
+            )
+        except repository.FixedIncomeNotFoundError as e:
+            raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
+        except repository.PartialRedemptionNotFoundError as e:
+            raise api_error(404, "PARTIAL_REDEMPTION_NOT_FOUND", e) from e
         days, cdi = business_days(market, record.start)
         return fixed_income_to_out(record, repository.fixed_income_to_domain(record), days, cdi)
 

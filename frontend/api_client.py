@@ -8,6 +8,8 @@ from decimal import Decimal
 
 import requests
 
+from formatting import brl
+
 XLSX_HEADER = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
@@ -65,6 +67,14 @@ class ApiClient:
     def redeem_fixed_income(self, investment_id: int, day: str | None) -> dict:
         url = f"/fixed-income/{investment_id}/redemption"
         return self._request("PUT", url, json={"redeemed_on": day})
+
+    def add_partial_redemption(self, investment_id: int, day: str, gross: str) -> dict:
+        url = f"/fixed-income/{investment_id}/partial-redemptions"
+        return self._request("POST", url, json={"date": day, "gross": gross})
+
+    def delete_partial_redemption(self, investment_id: int, redemption_id: int) -> dict:
+        url = f"/fixed-income/{investment_id}/partial-redemptions/{redemption_id}"
+        return self._request("DELETE", url)
 
     def delete_fixed_income(self, investment_id: int) -> None:
         self._request("DELETE", f"/fixed-income/{investment_id}")
@@ -156,6 +166,9 @@ FIXED_INCOME_MESSAGES = {
     "redemption must be between the start and the maturity": (
         "A data do resgate deve estar entre a aplicação e o vencimento."
     ),
+    "a partial redemption must be after the start and before the end": (
+        "O resgate parcial deve ser depois da aplicação e antes do resgate total ou do vencimento."
+    ),
 }
 
 
@@ -233,6 +246,20 @@ def domain_error(d: dict) -> str:
             return "Arquivo grande demais (máximo de 5 MB)."
         case "INVALID_FIXED_INCOME":
             return FIXED_INCOME_MESSAGES.get(d.get("message"), d.get("message", ""))
+        case "INVALID_PARTIAL_REDEMPTION":
+            return FIXED_INCOME_MESSAGES.get(d.get("message"), d.get("message", ""))
+        case "REDEMPTION_TOO_LARGE":
+            return (
+                f"Em {_br_date(d['date'])} a aplicação valia {brl(d['available'])}: "
+                "um resgate parcial precisa ser menor. Para tirar tudo, use o resgate total."
+            )
+        case "VALUE_NOT_KNOWN":
+            return (
+                "Não há valor para essa data: não é dia útil, ou o CDI dela ainda "
+                "não foi publicado."
+            )
+        case "PARTIAL_REDEMPTION_NOT_FOUND":
+            return "Resgate parcial não encontrado. Talvez ele já tenha sido apagado."
         case "FIXED_INCOME_NOT_FOUND":
             return "Aplicação não encontrada. Talvez ela já tenha sido apagada."
         case "STOCK_EVENT_NOT_FOUND":

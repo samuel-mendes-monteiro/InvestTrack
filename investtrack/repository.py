@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, contains_eager
 
 from investtrack.b3_statement import StatementRow, guess_asset_type
 from investtrack.events import NO_EVENTS, EventSource
-from investtrack.fixed_income import FixedIncome
+from investtrack.fixed_income import FixedIncome, PartialRedemption, gross_values
 from investtrack.income import Income, check_incomes, incomes_from_events
 from investtrack.models import (
     Asset,
@@ -29,6 +29,7 @@ from investtrack.models import (
     FixedIncomeRecord,
     IncomeRecord,
     OperationRecord,
+    PartialRedemptionRecord,
 )
 from investtrack.portfolio import (
     AppliedStockEvent,
@@ -419,6 +420,7 @@ def fixed_income_to_domain(record: FixedIncomeRecord) -> FixedIncome:
         maturity=record.maturity,
         amount=record.amount,
         redeemed_on=record.redeemed_on,
+        partial=tuple(PartialRedemption(p.date, p.gross) for p in record.partial_redemptions),
     )
 
 
@@ -448,7 +450,7 @@ def add_fixed_income(session: Session, user_id: int, investment: FixedIncome) ->
     return record
 
 
-def _get_fixed_income(session: Session, user_id: int, investment_id: int) -> FixedIncomeRecord:
+def get_fixed_income(session: Session, user_id: int, investment_id: int) -> FixedIncomeRecord:
     record = _owned(session, FixedIncomeRecord, investment_id, user_id)
     if record is None:
         raise FixedIncomeNotFoundError(investment_id)
@@ -459,15 +461,70 @@ def redeem_fixed_income(
     session: Session, user_id: int, investment_id: int, day: date | None
 ) -> FixedIncomeRecord:
     """Early redemption on `day` (None undoes it). Validated by the domain class."""
-    record = _get_fixed_income(session, user_id, investment_id)
+    record = get_fixed_income(session, user_id, investment_id)
     replace(fixed_income_to_domain(record), redeemed_on=day)  # raises if out of range
     record.redeemed_on = day
     session.commit()
     return record
 
 
+class PartialRedemptionNotFoundError(LookupError):
+    def __init__(self, redemption_id: int):
+        self.redemption_id = redemption_id
+        super().__init__(f"partial redemption {redemption_id} not found")
+
+
+class ValueNotKnownError(ValueError):
+    """No value for that day: not a business day, or its CDI isn't out yet."""
+
+    def __init__(self, day: date):
+        self.day = day
+        super().__init__(f"the value on {day} is not known (not a business day, or no CDI yet)")
+
+
+def add_partial_redemption(
+    session: Session,
+    user_id: int,
+    investment_id: int,
+    redemption: PartialRedemption,
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+) -> FixedIncomeRecord:
+    """Withdraw part of an investment, if there is that much on that day.
+
+    Needs the market data because the limit is the value on that day. Raises
+    ValueError (outside the period), ValueNotKnownError, or
+    RedemptionTooLargeError, also when an earlier withdrawal leaves too
+    little for a later one. Nothing is saved in those cases.
+    """
+    record = get_fixed_income(session, user_id, investment_id)
+    current = fixed_income_to_domain(record)
+    candidate = replace(current, partial=current.partial + (redemption,))  # validates dates
+    values = gross_values(candidate, business_days, cdi)  # raises if too large
+    if redemption.day not in values:
+        raise ValueNotKnownError(redemption.day)
+    record.partial_redemptions.append(
+        PartialRedemptionRecord(date=redemption.day, gross=redemption.gross)
+    )
+    session.commit()
+    return record
+
+
+def delete_partial_redemption(
+    session: Session, user_id: int, investment_id: int, redemption_id: int
+) -> FixedIncomeRecord:
+    """Always allowed: withdrawing less never leaves too little for later."""
+    record = get_fixed_income(session, user_id, investment_id)
+    match = [p for p in record.partial_redemptions if p.id == redemption_id]
+    if not match:
+        raise PartialRedemptionNotFoundError(redemption_id)
+    record.partial_redemptions.remove(match[0])  # delete-orphan deletes the row
+    session.commit()
+    return record
+
+
 def delete_fixed_income(session: Session, user_id: int, investment_id: int) -> None:
-    session.delete(_get_fixed_income(session, user_id, investment_id))
+    session.delete(get_fixed_income(session, user_id, investment_id))
     session.commit()
 
 

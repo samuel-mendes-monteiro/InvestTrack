@@ -12,6 +12,12 @@ a rate only on business days, so it is the official calendar for free.
 Each day's CDI is earned overnight, so a value at the close of day d
 includes the rates of the days before d.
 
+Partial redemptions: the value grows in proportion to the money invested,
+so withdrawing R from a value V leaves (1 - R/V) of everything: of the
+value from then on, and of the principal. Each withdrawal is taxed on its
+own share of the gain, by the days held since the start (the whole
+investment has one start, so it has one IR bracket on each day).
+
 Taxes on redemption (CDB only; LCI and LCA are exempt for individuals):
 - IOF, if redeemed within 30 days, on the gain (Decreto 6.306/2007);
 - income tax on the gain minus IOF, by calendar days held (Lei 11.033/2004).
@@ -66,6 +72,31 @@ def iof_rate(days_held: int) -> Decimal:
 
 
 @dataclass(frozen=True)
+class PartialRedemption:
+    day: date
+    gross: Decimal  # amount withdrawn, before taxes
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.gross, Decimal):
+            raise TypeError("gross must be a Decimal, never a float")
+        if self.gross <= 0:
+            raise ValueError("redemption amount must be greater than zero")
+
+
+class RedemptionTooLargeError(ValueError):
+    """Withdrawing as much as (or more than) the value left on that day."""
+
+    def __init__(self, day: date, requested: Decimal, available: Decimal):
+        self.day = day
+        self.requested = requested
+        self.available = available
+        super().__init__(
+            f"cannot withdraw {requested} on {day}: the value then is {available}"
+            " (redeem the whole investment instead)"
+        )
+
+
+@dataclass(frozen=True)
 class FixedIncome:
     name: str  # e.g. "CDB Banco X"
     product: Product
@@ -75,6 +106,7 @@ class FixedIncome:
     maturity: date
     amount: Decimal
     redeemed_on: date | None = None  # early redemption; None = held until maturity
+    partial: tuple[PartialRedemption, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -93,6 +125,12 @@ class FixedIncome:
             raise ValueError("maturity must be after the start date")
         if self.redeemed_on is not None and not self.start <= self.redeemed_on <= self.maturity:
             raise ValueError("redemption must be between the start and the maturity")
+        # Strictly inside: on the start there is no gain yet, and taking money
+        # on the last day is the full redemption itself.
+        for p in self.partial:
+            if not self.start < p.day < self.end:
+                raise ValueError("a partial redemption must be after the start and before the end")
+        object.__setattr__(self, "partial", tuple(sorted(self.partial, key=lambda p: p.day)))
 
     @property
     def end(self) -> date:
@@ -106,25 +144,45 @@ class Valuation:
     gross: Decimal
     iof: Decimal
     ir: Decimal
+    principal: Decimal  # money invested in what is valued (after withdrawals)
 
     @property
     def net(self) -> Decimal:
         return self.gross - self.iof - self.ir
 
+    @property
+    def gross_return(self) -> Decimal:
+        """Gross return since the start, %. Withdrawals don't change it."""
+        return (self.gross / self.principal - 1) * 100
 
-def gross_values(
+
+@dataclass(frozen=True)
+class DayValue:
+    gross: Decimal  # value left after that day's withdrawals
+    share: Decimal  # fraction of the investment still held (1 until a withdrawal)
+
+
+def _trajectory(
     investment: FixedIncome, business_days: list[date], cdi: dict[date, Decimal]
-) -> dict[date, Decimal]:
-    """Gross value at the close of each business day while invested.
+) -> dict[date, DayValue]:
+    """Value at the close of each business day while invested.
 
     Stops at the end (redemption or maturity) or at the last day with data.
     For post-fixed, a day without a published CDI ends the series, since the
     value can't be known past it.
+
+    `whole` is the value as if nothing had been withdrawn; the real value is
+    whole x share. Keeping both apart is what makes partial redemptions exact.
     """
     pct = investment.rate / 100
+    withdrawn: dict[date, Decimal] = defaultdict(lambda: ZERO)
+    for p in investment.partial:
+        withdrawn[p.day] += p.gross
+
     days = sorted(d for d in business_days if investment.start <= d <= investment.end)
-    values: dict[date, Decimal] = {}
-    value = investment.amount
+    values: dict[date, DayValue] = {}
+    whole = investment.amount
+    share = ONE
     elapsed = 0
     previous: date | None = None
     for day in days:
@@ -132,36 +190,83 @@ def gross_values(
             if investment.indexer is Indexer.CDI:
                 if previous not in cdi:
                     break
-                value *= 1 + cdi[previous] / 100 * pct
+                whole *= 1 + cdi[previous] / 100 * pct
             else:
                 elapsed += 1
-                value = investment.amount * (1 + pct) ** (Decimal(elapsed) / 252)
-        values[day] = value
+                whole = investment.amount * (1 + pct) ** (Decimal(elapsed) / 252)
+        if day in withdrawn:
+            before = whole * share
+            if withdrawn[day] >= before:
+                raise RedemptionTooLargeError(day, withdrawn[day], before)
+            share *= 1 - withdrawn[day] / before
+        values[day] = DayValue(whole * share, share)
         previous = day
     return values
 
 
-def taxes(investment: FixedIncome, day: date, gross: Decimal) -> Valuation:
-    """IOF and income tax if redeemed on `day` with this gross value."""
-    gain = max(gross - investment.amount, ZERO)
-    if investment.product in TAX_EXEMPT:
-        return Valuation(day, gross, ZERO, ZERO)
-    held = (day - investment.start).days
+def gross_values(
+    investment: FixedIncome, business_days: list[date], cdi: dict[date, Decimal]
+) -> dict[date, Decimal]:
+    """Gross value at the close of each business day while invested."""
+    return {d: v.gross for d, v in _trajectory(investment, business_days, cdi).items()}
+
+
+def _taxes(product: Product, start: date, day: date, gross: Decimal, principal: Decimal):
+    gain = max(gross - principal, ZERO)
+    if product in TAX_EXEMPT:
+        return Valuation(day, gross, ZERO, ZERO, principal)
+    held = (day - start).days
     iof = gain * iof_rate(held)
     ir = (gain - iof) * ir_rate(held)
-    return Valuation(day, gross, iof, ir)
+    return Valuation(day, gross, iof, ir, principal)
+
+
+def taxes(investment: FixedIncome, day: date, gross: Decimal, share: Decimal = ONE) -> Valuation:
+    """IOF and income tax if redeemed on `day` with this gross value.
+
+    `share` is the fraction still held: after partial redemptions, only that
+    fraction of the money invested is left to be deducted from the value.
+    """
+    principal = investment.amount * share
+    return _taxes(investment.product, investment.start, day, gross, principal)
 
 
 def value_on(
     investment: FixedIncome, day: date, business_days: list[date], cdi: dict[date, Decimal]
 ) -> Valuation | None:
     """Value on `day` (or the last day with data before it), with taxes."""
-    values = gross_values(investment, business_days, cdi)
+    values = _trajectory(investment, business_days, cdi)
     known = [d for d in values if d <= day]
     if not known:
         return None
     last = max(known)
-    return taxes(investment, last, values[last])
+    return taxes(investment, last, values[last].gross, values[last].share)
+
+
+def partial_valuations(
+    investment: FixedIncome, business_days: list[date], cdi: dict[date, Decimal]
+) -> list[Valuation | None]:
+    """Taxes on each partial redemption, in the order of investment.partial.
+
+    The principal of a withdrawal is the share of the investment it took:
+    from 1.0 to 0.75 held is a quarter of the money invested. None for a
+    redemption whose day has no data yet.
+    """
+    values = _trajectory(investment, business_days, cdi)
+    days = sorted(values)
+    result: list[Valuation | None] = []
+    for p in investment.partial:
+        if p.day not in values:
+            result.append(None)
+            continue
+        i = days.index(p.day)
+        share_before = values[days[i - 1]].share if i > 0 else ONE
+        # Withdrawals on the same day split that day's share drop by amount.
+        same_day = sum((q.gross for q in investment.partial if q.day == p.day), ZERO)
+        dropped = (share_before - values[p.day].share) * p.gross / same_day
+        principal = investment.amount * dropped
+        result.append(_taxes(investment.product, investment.start, p.day, p.gross, principal))
+    return result
 
 
 def daily_series(
@@ -171,7 +276,9 @@ def daily_series(
 
     Applying is money in on the first day; redeeming (or maturing) is money
     out at the gross value on the last day, which then no longer counts in
-    the value. Investments still running count until the last day with data.
+    the value. A partial redemption is money out on its day, and the value
+    that day is what is left. Investments still running count until the
+    last day with data.
     """
     values: dict[date, Decimal] = defaultdict(lambda: ZERO)
     flows: dict[date, Decimal] = defaultdict(lambda: ZERO)
@@ -181,6 +288,9 @@ def daily_series(
         if not gross:
             continue
         flows[min(gross)] += investment.amount
+        for p in investment.partial:
+            if p.day in gross:
+                flows[p.day] -= p.gross
         ended = last_known is not None and investment.end <= last_known
         last = max(gross)
         for day, value in gross.items():

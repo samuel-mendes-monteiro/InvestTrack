@@ -8,11 +8,14 @@ import pytest
 from investtrack.fixed_income import (
     FixedIncome,
     Indexer,
+    PartialRedemption,
     Product,
+    RedemptionTooLargeError,
     daily_series,
     gross_values,
     iof_rate,
     ir_rate,
+    partial_valuations,
     taxes,
     value_on,
 )
@@ -141,3 +144,61 @@ def test_twr_of_fixed_income_alone():
     values, flows = daily_series([cdb(rate="110")], DAYS[:3], ONE_PERCENT)
     history = portfolio_history([], DAYS[:3], {}, other_values=values, other_flows=flows)
     assert [h.twr for h in history] == [0, Decimal("0.011"), Decimal("1.011") ** 2 - 1]
+
+
+# --- partial redemptions -----------------------------------------------------
+
+
+def withdraw(day: date, gross: str) -> PartialRedemption:
+    return PartialRedemption(day, Decimal(gross))
+
+
+def test_partial_redemption_keeps_the_rest_growing():
+    half = cdb(partial=(withdraw(DAYS[1], "505"),))  # half of the 1010 that day
+    values = gross_values(half, DAYS[:3], ONE_PERCENT)
+    assert values[DAYS[1]] == Decimal("505")
+    assert values[DAYS[2]] == Decimal("510.05")  # half of 1020.1
+
+
+def test_what_is_left_is_taxed_on_its_own_principal():
+    half = cdb(partial=(withdraw(DAYS[1], "505"),))
+    v = value_on(half, DAYS[2], DAYS[:3], ONE_PERCENT)
+    # 500 of the 1000 are left: the gain is 10.05, IOF 93% on day 2.
+    assert v.iof == Decimal("10.05") * Decimal("0.93")
+    assert v.ir == (Decimal("10.05") - v.iof) * Decimal("0.225")
+
+
+def test_each_withdrawal_is_taxed_on_its_share_of_the_gain():
+    two = cdb(partial=(withdraw(DAYS[1], "252.5"), withdraw(DAYS[2], "255.025")))
+    first, second = partial_valuations(two, DAYS[:3], ONE_PERCENT)
+    # The first took a quarter (250 of principal, 2.50 of gain); the second
+    # took a third of the rest, which is another quarter (5.025 of gain).
+    assert first.iof == Decimal("2.5") * Decimal("0.96")
+    assert second.iof == Decimal("5.025") * Decimal("0.93")
+    left = value_on(two, DAYS[2], DAYS[:3], ONE_PERCENT)
+    assert left.gross == Decimal("510.05")
+
+
+def test_withdrawing_everything_is_refused():
+    with pytest.raises(RedemptionTooLargeError) as exc:
+        gross_values(cdb(partial=(withdraw(DAYS[1], "1010"),)), DAYS[:3], ONE_PERCENT)
+    assert exc.value.available == Decimal("1010")
+
+
+@pytest.mark.parametrize("day", [START, date(2028, 3, 2)])
+def test_partial_redemption_must_be_inside_the_period(day):
+    with pytest.raises(ValueError):
+        cdb(partial=(withdraw(day, "10"),))
+
+
+def test_partial_redemption_after_a_full_one_is_refused():
+    with pytest.raises(ValueError):
+        cdb(redeemed_on=DAYS[1], partial=(withdraw(DAYS[2], "10"),))
+
+
+def test_partial_redemption_is_money_out_and_twr_ignores_it():
+    half = cdb(partial=(withdraw(DAYS[1], "505"),))
+    values, flows = daily_series([half], DAYS[:3], ONE_PERCENT)
+    assert flows[DAYS[1]] == Decimal("-505")
+    history = portfolio_history([], DAYS[:3], {}, other_values=values, other_flows=flows)
+    assert history[-1].twr == Decimal("1.01") ** 2 - 1  # same as without withdrawing
