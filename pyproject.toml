@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "investtrack"
-version = "0.2.2"
+version = "0.3.0"
 description = "Personal investment portfolio tracker for the Brazilian stock market (B3)"
 requires-python = ">=3.12"
 dependencies = [

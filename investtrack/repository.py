@@ -166,7 +166,7 @@ def delete_operation(session: Session, operation_id: int, events: EventSource = 
     session.commit()
 
 
-def _all_operations_and_stock_events(
+def operations_and_stock_events(
     session: Session, events: EventSource
 ) -> tuple[list[Operation], list[StockEvent]]:
     operations: list[Operation] = []
@@ -178,11 +178,11 @@ def _all_operations_and_stock_events(
 
 
 def get_portfolio(session: Session, events: EventSource = NO_EVENTS) -> dict[str, Position]:
-    return calculate_portfolio(*_all_operations_and_stock_events(session, events))
+    return calculate_portfolio(*operations_and_stock_events(session, events))
 
 
 def get_applied_stock_events(session: Session, events: EventSource) -> list[AppliedStockEvent]:
-    return applied_stock_events(*_all_operations_and_stock_events(session, events))
+    return applied_stock_events(*operations_and_stock_events(session, events))
 
 
 def set_bonus_cost(

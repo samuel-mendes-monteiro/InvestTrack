@@ -168,3 +168,42 @@ class BonusCost(Base):
     ticker: Mapped[str] = mapped_column(String(12), primary_key=True)
     record_date: Mapped[date] = mapped_column(Date, primary_key=True)
     unit_cost: Mapped[Decimal] = mapped_column(SafeDecimal)
+
+
+class DailyPrice(Base):
+    """Official closing price of each B3 spot-market ticker, from COTAHIST.
+
+    Every ticker of each downloaded day is kept, not only the ones you own:
+    a ticker added later already has its history, without downloading again.
+    """
+
+    __tablename__ = "daily_prices"
+
+    ticker: Mapped[str] = mapped_column(String(12), primary_key=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    close: Mapped[Decimal] = mapped_column(SafeDecimal)
+
+    __table_args__ = (Index("ix_daily_prices_date", "date"),)
+
+
+class BenchmarkValue(Base):
+    """Daily benchmark data: "IBOV" (index points) and "CDI" (% per day)."""
+
+    __tablename__ = "benchmark_values"
+
+    series: Mapped[str] = mapped_column(String(10), primary_key=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    value: Mapped[Decimal] = mapped_column(SafeDecimal)
+
+
+class HistoryLoad(Base):
+    """Which periods of historical data were already downloaded.
+
+    period examples: "COTAHIST:M102026" (a month), "COTAHIST:D13112026"
+    (a day, also recorded for holidays, which have no file), "IBOV:2026", "CDI".
+    """
+
+    __tablename__ = "history_loads"
+
+    period: Mapped[str] = mapped_column(String(30), primary_key=True)
+    loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

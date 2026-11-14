@@ -235,7 +235,7 @@ open_positions = [p for p in portfolio["positions"] if Decimal(p["quantity"]) !=
 # (st.tabs would jump back to the first tab after every interaction).
 view = st.segmented_control(
     "Visão",
-    ["Carteira", "Operações", "Proventos"],
+    ["Carteira", "Rentabilidade", "Operações", "Proventos"],
     key="view",
     default="Carteira",
     label_visibility="collapsed",
@@ -243,7 +243,7 @@ view = st.segmented_control(
 
 # --- portfolio view ----------------------------------------------------------
 
-if view not in ("Operações", "Proventos"):
+if view not in ("Rentabilidade", "Operações", "Proventos"):
     if not portfolio["positions"]:
         st.info("Nenhuma operação ainda. Registre a primeira compra na barra lateral.")
     else:
@@ -320,6 +320,62 @@ if view not in ("Operações", "Proventos"):
                 st.plotly_chart(fig, width="stretch")
             else:
                 st.caption("Sem cotações para montar o gráfico.")
+
+# --- performance view --------------------------------------------------------
+
+elif view == "Rentabilidade":
+    try:
+        perf = api.performance()
+    except ApiError as e:
+        st.error(str(e))
+        st.stop()
+
+    if perf["syncing"]:
+        st.info(
+            "Baixando o histórico de cotações da B3, do Ibovespa e do CDI. Na primeira vez "
+            "leva cerca de um minuto; depois, só o dia novo. Atualize a página em instantes.",
+            icon="⏳",
+        )
+        st.button("Atualizar", key="perf_refresh")
+    if not perf["points"]:
+        if not perf["syncing"]:
+            st.info("Registre uma compra para ver a rentabilidade.")
+    else:
+        start, as_of = (date.fromisoformat(perf[k]) for k in ("start", "as_of"))
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Carteira", pct(perf["twr"]))
+        c2.metric("CDI", pct(perf["cdi"]))
+        c3.metric("Ibovespa", pct(perf["ibovespa"]))
+        c4.metric(
+            "% do CDI",
+            f"{Decimal(perf['pct_of_cdi']):.0f}%" if perf["pct_of_cdi"] is not None else "—",
+        )
+        st.caption(
+            f"De {start:%d/%m/%Y} a {as_of:%d/%m/%Y} (último fechamento oficial). "
+            "Rentabilidade ponderada pelo tempo (TWR): aportes e vendas não distorcem o "
+            "resultado, e os proventos contam como retorno."
+        )
+
+        series = {"Carteira": "twr", "CDI": "cdi", "Ibovespa": "ibovespa"}
+        chart = pd.DataFrame(
+            [
+                {"Data": p["date"], "Série": label, "Rentabilidade": float(p[key])}
+                for p in perf["points"]
+                for label, key in series.items()
+                if p[key] is not None  # float only for drawing
+            ]
+        )
+        fig = px.line(chart, x="Data", y="Rentabilidade", color="Série")
+        fig.update_traces(hovertemplate="%{x|%d/%m/%Y}: %{y:.2f}%<extra></extra>")
+        fig.update_layout(
+            height=380,
+            margin=dict(t=10, b=10, l=10, r=10),
+            yaxis_title=None,
+            xaxis_title=None,
+            legend_title=None,
+            yaxis_ticksuffix="%",
+        )
+        st.plotly_chart(fig, width="stretch")
 
 # --- operations view ---------------------------------------------------------
 

@@ -155,6 +155,25 @@ class PortfolioOut(BaseModel):
     totals: PortfolioTotals
 
 
+class PerformancePoint(BaseModel):
+    date: date
+    value: Money = Field(description="Portfolio value at the close")
+    twr: Money = Field(description="Cumulative time-weighted return, %")
+    cdi: Money | None = Field(description="CDI accumulated over the same period, %")
+    ibovespa: Money | None = Field(description="Ibovespa return over the same period, %")
+
+
+class PerformanceOut(BaseModel):
+    syncing: bool = Field(description="Historical data is being downloaded; numbers may change")
+    start: date | None = Field(description="First trading day with a position")
+    as_of: date | None = Field(description="Last day with official closing prices")
+    twr: Money | None
+    cdi: Money | None
+    ibovespa: Money | None
+    pct_of_cdi: Money | None = Field(description="TWR as a percentage of the CDI")
+    points: list[PerformancePoint]
+
+
 class ErrorDetail(BaseModel):
     code: str = Field(examples=["INSUFFICIENT_POSITION"])
     message: str = Field(description="English fallback text")

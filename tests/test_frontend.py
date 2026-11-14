@@ -212,3 +212,9 @@ def test_set_bonus_cost_request():
 def test_missing_bonus_is_translated():
     body = '{"detail": {"code": "STOCK_EVENT_NOT_FOUND", "message": "...", "ticker": "ITSA4"}}'
     assert api_error_for(404, body) == "Não há bonificação desse ativo nessa data."
+
+
+def test_performance_request():
+    client, session = client_with(fake_response(200, '{"twr": 0.1, "points": []}'))
+    assert client.performance()["twr"] == Decimal("0.1")
+    session.request.assert_called_once_with("GET", "http://api.test/performance", timeout=15.0)

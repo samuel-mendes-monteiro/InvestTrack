@@ -8,6 +8,7 @@ from investtrack.api import create_app
 from investtrack.db import create_db_engine
 from investtrack.events import StaticEvents
 from investtrack.income import IncomeEvent, IncomeType
+from investtrack.market_data import StaticMarketData
 from investtrack.portfolio import StockEvent, StockEventType
 from investtrack.prices import StaticPriceProvider
 
@@ -527,3 +528,76 @@ def test_cost_is_used_when_validating_sales(bonus_client):
     assert r.status_code == 201
     realized = bonus_client.get("/portfolio").json()["totals"]["realized_profit"]
     assert realized == "1360.00"  # 220 x 20 - 3040
+
+
+# --- performance -------------------------------------------------------------
+
+MON, TUE = date(2026, 3, 2), date(2026, 3, 3)
+
+
+def performance_client(market):
+    app = create_app(
+        engine=create_db_engine("sqlite://"),
+        price_provider=PRICES,
+        events=StaticEvents(),
+        market_data=market,
+    )
+    return TestClient(app)
+
+
+HISTORY = StaticMarketData(
+    closes={"PETR4": {MON: Decimal("10"), TUE: Decimal("11")}},
+    series={
+        "IBOV": {date(2026, 2, 27): Decimal("100"), MON: Decimal("110"), TUE: Decimal("121")},
+        "CDI": {MON: Decimal("1")},
+    },
+    last_day=TUE,
+)
+
+
+def test_performance_against_benchmarks():
+    with performance_client(HISTORY) as client:
+        client.post("/operations", json=op(qty="100", price="10", day="2026-03-02"))
+        body = client.get("/performance").json()
+
+    assert body["syncing"] is False
+    assert (body["start"], body["as_of"]) == ("2026-03-02", "2026-03-03")
+    assert body["twr"] == "10.00"
+    assert body["cdi"] == "1.00"
+    assert body["ibovespa"] == "21.00"  # from the close before the first trade
+    assert body["pct_of_cdi"] == "1000.00"
+    assert body["points"][0] == {
+        "date": "2026-03-02",
+        "value": "1000.00",
+        "twr": "0.00",
+        "cdi": "0.00",
+        "ibovespa": "10.00",
+    }
+
+
+def test_performance_without_operations():
+    with performance_client(HISTORY) as client:
+        body = client.get("/performance").json()
+    assert body["points"] == []
+    assert body["twr"] is None
+
+
+class UnsyncedMarket(StaticMarketData):
+    def __init__(self):
+        super().__init__(last_day=TUE)
+        self.synced_from = []
+
+    def is_synced(self, start):
+        return False
+
+    def sync(self, start):
+        self.synced_from.append(start)
+
+
+def test_missing_history_is_downloaded_in_the_background():
+    market = UnsyncedMarket()
+    with performance_client(market) as client:
+        client.post("/operations", json=op(day="2026-03-02"))
+        body = client.get("/performance").json()
+    assert body["syncing"] is True
+    assert market.synced_from == [MON]  # TestClient runs background tasks after the response

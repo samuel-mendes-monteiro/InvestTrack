@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, status
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,9 @@ from investtrack.income import (
     monthly_income,
     net_income_by_ticker,
 )
+from investtrack.market_data import CDI, IBOV, MarketData, MarketDataSource
 from investtrack.models import OperationRecord
+from investtrack.performance import cdi_accumulated, index_return, portfolio_history
 from investtrack.portfolio import InsufficientPositionError, Operation, value_position
 from investtrack.prices import CachedPriceProvider, PriceProvider
 from investtrack.schemas import (
@@ -41,6 +43,8 @@ from investtrack.schemas import (
     MonthlyIncomeOut,
     OperationCreate,
     OperationOut,
+    PerformanceOut,
+    PerformancePoint,
     PortfolioOut,
     PortfolioTotals,
     PositionOut,
@@ -64,7 +68,12 @@ def get_events(request: Request) -> EventSource:
     return request.app.state.events
 
 
+def get_market_data(request: Request) -> MarketDataSource:
+    return request.app.state.market_data
+
+
 SessionDep = Annotated[Session, Depends(get_session)]
+MarketDep = Annotated[MarketDataSource, Depends(get_market_data)]
 PricesDep = Annotated[PriceProvider, Depends(get_price_provider)]
 EventsDep = Annotated[EventSource, Depends(get_events)]
 
@@ -152,8 +161,9 @@ def create_app(
     engine: Engine | None = None,
     price_provider: PriceProvider | None = None,
     events: EventSource | None = None,
+    market_data: MarketDataSource | None = None,
 ) -> FastAPI:
-    """Build the app. Tests pass their own engine, prices and corporate events."""
+    """Build the app. Tests pass their own engine, prices, events and history."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -162,6 +172,7 @@ def create_app(
         app.state.engine = engine or create_db_engine()
         app.state.price_provider = price_provider or default_price_provider(app.state.engine)
         app.state.events = events or StoredEvents(app.state.engine, B3Client().fetch_events)
+        app.state.market_data = market_data or MarketData(app.state.engine)
         init_db(app.state.engine)
         yield
         app.state.engine.dispose()
@@ -169,7 +180,7 @@ def create_app(
     app = FastAPI(
         title="InvestTrack API",
         description="Portfolio tracker for the Brazilian stock market (B3).",
-        version="0.2.2",
+        version="0.3.0",
         lifespan=lifespan,
     )
 
@@ -398,6 +409,85 @@ def create_app(
                 income=sum(income.values(), Decimal("0")),
                 income_pending=pending,
             ),
+        )
+
+    @app.get("/performance", tags=["portfolio"])
+    def performance(
+        session: SessionDep, events: EventsDep, market: MarketDep, background: BackgroundTasks
+    ) -> PerformanceOut:
+        """Time-weighted return since the first trade, against CDI and Ibovespa.
+
+        Answers right away with the history already stored. If something is
+        missing, it is downloaded in the background and `syncing` is true.
+        """
+        operations, stock = repository.operations_and_stock_events(session, events)
+        if not operations:
+            return PerformanceOut(
+                syncing=False,
+                start=None,
+                as_of=None,
+                twr=None,
+                cdi=None,
+                ibovespa=None,
+                pct_of_cdi=None,
+                points=[],
+            )
+        start = min(op.date for op in operations)
+        syncing = market.syncing
+        if not syncing and not market.is_synced(start):
+            background.add_task(market.sync, start)
+            syncing = True
+
+        last_day = market.last_day()
+        closes = market.closes({op.ticker for op in operations}, start)
+        ibov = market.series(IBOV, start - timedelta(days=15))  # includes the close before
+        cdi = market.series(CDI, start)
+        days = sorted(
+            d
+            for d in set(ibov) | {d for by_day in closes.values() for d in by_day}
+            if start <= d <= last_day
+        )
+        incomes = [i for i in received(all_incomes(session, events)) if i.date <= last_day]
+        history = portfolio_history(operations, days, closes, stock, incomes)
+        if not history:
+            return PerformanceOut(
+                syncing=syncing,
+                start=None,
+                as_of=None,
+                twr=None,
+                cdi=None,
+                ibovespa=None,
+                pct_of_cdi=None,
+                points=[],
+            )
+
+        first = history[0].date
+        cdi_acc = cdi_accumulated(cdi, days, first) if cdi else {}
+        ibov_ret = index_return(ibov, days, first)
+
+        def pct(value: Decimal | None) -> Decimal | None:
+            return None if value is None else value * 100
+
+        points = [
+            PerformancePoint(
+                date=h.date,
+                value=h.value,
+                twr=h.twr * 100,
+                cdi=pct(cdi_acc.get(h.date)),
+                ibovespa=pct(ibov_ret.get(h.date)),
+            )
+            for h in history
+        ]
+        last = points[-1]
+        return PerformanceOut(
+            syncing=syncing,
+            start=first,
+            as_of=last.date,
+            twr=last.twr,
+            cdi=last.cdi,
+            ibovespa=last.ibovespa,
+            pct_of_cdi=last.twr / last.cdi * 100 if last.cdi else None,
+            points=points,
         )
 
     return app

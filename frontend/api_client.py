@@ -30,6 +30,9 @@ class ApiClient:
     def portfolio(self) -> dict:
         return self._request("GET", "/portfolio")
 
+    def performance(self) -> dict:
+        return self._request("GET", "/performance")
+
     def operations(self, ticker: str | None = None) -> list[dict]:
         params = {"ticker": ticker} if ticker else None
         return self._request("GET", "/operations", params=params)

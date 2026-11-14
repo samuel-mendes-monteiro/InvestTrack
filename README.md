@@ -22,6 +22,7 @@ InvestTrack is a web app where you record your buy and sell trades and get back:
 - realized and unrealized profit/loss, in R$ and in %
 - dividends, JCP and FII distributions, **computed automatically** from what B3 publishes and what you owned on each record date, including income still to be paid
 - how your portfolio is split across assets
+- your **time-weighted return** since the first trade, compared with the CDI and the Ibovespa
 
 Quotes from B3 are fetched automatically from [brapi.dev](https://brapi.dev), and income events from B3's own website. Invalid operations, such as selling more shares than you own on that date, are refused with a clear message:
 
@@ -47,6 +48,10 @@ flowchart LR
     API --> Events["<b>Corporate events</b><br/>daily sync, kept forever"]
     Events -- "HTTPS" --> B3["B3 website"]
     Events --> DB
+    API --> Market["<b>Market history</b><br/>background download"]
+    Market -- "COTAHIST files" --> B3
+    Market -- "SGS API" --> BCB["Central Bank (CDI)"]
+    Market --> DB
 ```
 
 | Module | Responsibility |
@@ -54,7 +59,10 @@ flowchart LR
 | [`investtrack/portfolio.py`](investtrack/portfolio.py) | Average cost, realized and unrealized profit. Pure functions: no database, no HTTP |
 | [`investtrack/income.py`](investtrack/income.py) | Income (dividends, JCP, FII distributions): computed from events and trades, monthly totals. Also pure |
 | [`investtrack/events.py`](investtrack/events.py) | Stores B3 events (income, splits, bonus shares), synced once a day, with fallback to what is stored |
-| [`investtrack/b3.py`](investtrack/b3.py) | The only module that knows B3's URLs and JSON format |
+| [`investtrack/b3.py`](investtrack/b3.py) | The only module that knows B3's corporate events URLs and JSON format |
+| [`investtrack/performance.py`](investtrack/performance.py) | Time-weighted return and benchmarks (CDI, Ibovespa). Pure |
+| [`investtrack/market_data.py`](investtrack/market_data.py) | Stores daily prices, Ibovespa and CDI; downloads only what is missing, in the background |
+| [`investtrack/history.py`](investtrack/history.py) | Clients and parsers for COTAHIST files, the Ibovespa table and the CDI series |
 | [`investtrack/repository.py`](investtrack/repository.py) | Saves and reads trades; validates every change through the calculation core |
 | [`investtrack/api.py`](investtrack/api.py) | Thin HTTP layer: converts JSON, calls the repository, maps errors to status codes |
 | [`investtrack/prices.py`](investtrack/prices.py) | Quote cache with fallback to the last known price |
@@ -101,6 +109,18 @@ net   = gross − tax withheld   (15% on JCP; dividends and FII distributions: n
 - Since it is recalculated from the trades, fixing an old trade fixes the income too.
 - For what B3 doesn't publish (BDRs, income older than the history B3 shows), income can be entered manually, as the total shown in the broker statement.
 
+**Performance** is the time-weighted return (TWR), which measures how the assets did regardless of when money was put in or taken out:
+
+```
+daily_return = (value_at_close + income_paid − net_flow) / previous_value − 1
+TWR          = (1 + r₁) × (1 + r₂) × … − 1
+```
+
+- Buys are inflows and sells are outflows (fees included), assumed at the end of the day: a buy's first day counts from the trade price to the close. Putting in ten times more money doesn't change the return.
+- Income counts as return, net of withheld tax.
+- Shares are valued at the official close of each day. A day without trades in an asset uses its last close.
+- The CDI is accumulated over the same days (each day's rate is earned overnight), and the Ibovespa from the close before the first trade.
+
 ## Technical decisions
 
 - **No `float` for money.** `Decimal` everywhere, because `0.1 + 0.2 != 0.3` in floating point. This is enforced, not just a convention: the core rejects floats, JSON numbers from brapi and from clients are parsed straight into `Decimal`, and money is typed into text fields (accepting `30,50` or `1.234,56`) because Streamlit's number input returns a float.
@@ -116,6 +136,10 @@ net   = gross − tax withheld   (15% on JCP; dividends and FII distributions: n
 - **Positions depend on market data, but are still never stored.** Every calculation (validating a sale, deleting a trade, the portfolio, income) uses the same `calculate_position` with the stock events, so after a 1:2 split, selling the doubled amount is accepted everywhere. Other corporate actions (spin-offs, capital reductions) need more than a factor and are not handled.
 - **Events are kept forever, synced once a day.** B3 shows only about 12 months of income history (stock events go back decades). Each sync replaces the window B3 returned (so corrections apply) and keeps everything older. Events are announced days ahead, so a daily sync loses nothing and makes one request per ticker per day.
 - **Only market data is stored, never what you received.** Events (value per share) are stored like quotes; your income is computed from them and your trades.
+- **Historical prices come from B3's official COTAHIST files, unadjusted.** brapi's history is limited to 3 months on the free plan. Adjusted prices (like "adjusted close" elsewhere) would also be wrong here: splits and income are already applied by this project, so they would count twice.
+- **The first history download runs in the background.** A year of trades needs about 100 MB (one file per month), so `/performance` answers at once with what is stored, starts the download as a FastAPI background task and returns `syncing: true`; a lock keeps two downloads from running together. After that, each day adds one 550 KB file.
+- **What to download is derived, not scheduled.** The periods needed (closed months as one file, the current month day by day, until yesterday) are compared with the ones recorded as loaded. Weekdays without a file are holidays and are recorded too. Every ticker of each day is stored (about 30,000 prices a month), so a ticker added later already has its history.
+- **One injectable clock.** Market data uses the same clock for "today" and for load timestamps. Mixing a fake "today" with the real clock made tests pass only on the day they were written.
 - **New tables, no migration.** Income has no quantity or price, so it isn't stored as a kind of trade. Adding tables is the safest schema change: existing databases get them on startup and no existing column changes.
 - **The frontend never imports the backend.** It only talks to the API over HTTP, so the Streamlit UI can later be replaced by React without touching the backend.
 
@@ -125,7 +149,7 @@ net   = gross − tax withheld   (15% on JCP; dividends and FII distributions: n
 pytest --cov
 ```
 
-230 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
+271 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
 
 The calculation tests include the worked example used to design the rules:
 
@@ -187,6 +211,7 @@ streamlit run frontend/app.py
 | `PUT` | `/stock-events/{ticker}/{date}/unit-cost` | Attributed cost of a bonus event (404 if there is no bonus on that date) |
 | `DELETE` | `/stock-events/{ticker}/{date}/unit-cost` | Back to zero cost |
 | `GET` | `/portfolio` | Positions, live prices, income received and portfolio totals |
+| `GET` | `/performance` | Daily TWR, CDI and Ibovespa since the first trade (downloads missing history in the background) |
 | `GET` | `/health` | Health check |
 
 ### Configuration
@@ -209,7 +234,7 @@ streamlit run frontend/app.py
 - [x] **v0.2:** dividends, JCP and REIT (FII) income
 - [x] Stock splits, reverse splits and bonus shares
 - [x] Attributed cost of bonus shares (*custo atribuído*)
-- [ ] **v0.3:** historical performance with time-weighted return (TWR), compared with CDI and Ibovespa
+- [x] **v0.3:** historical performance with time-weighted return (TWR), compared with CDI and Ibovespa
 - [ ] **v0.4:** fixed income (CDB, LCI, LCA)
 - [ ] **v0.5:** login and multiple users
 - [ ] **v0.6:** import B3 trade statements
