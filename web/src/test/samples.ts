@@ -112,3 +112,20 @@ export function fixedIncome(overrides: Partial<Schemas['FixedIncomeOut']> = {}):
     ...overrides,
   }
 }
+
+export function performance(overrides: Partial<Schemas['PerformanceOut']> = {}): Schemas['PerformanceOut'] {
+  return {
+    start: '2026-01-05',
+    as_of: '2026-11-13',
+    twr: '48.8213',
+    cdi: '12.0811',
+    ibovespa: '7.4172',
+    pct_of_cdi: '404.11',
+    syncing: false,
+    points: [
+      { date: '2026-01-05', twr: '0', cdi: '0', ibovespa: '0', value: '3000.00' },
+      { date: '2026-11-13', twr: '48.8213', cdi: '12.0811', ibovespa: null, value: '8405.95' },
+    ],
+    ...overrides,
+  }
+}

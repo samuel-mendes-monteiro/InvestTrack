@@ -218,9 +218,19 @@ h2 {
   padding: 6px 14px;
 }
 
-@media (max-width: 720px) {
+/* Five tabs plus the actions: the e-mail is the first thing to give up its
+   room (it stays in the Sair button's tooltip), then the tabs scroll sideways. */
+@media (max-width: 1200px) {
   .topbar .email {
     display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar nav {
+    order: 10;
+    width: 100%;
+    overflow-x: auto;
   }
 }
 

@@ -39,7 +39,7 @@ export function MonthlyChart({ months }: { months: Schemas['MonthlyIncomeOut'][]
               return [brl(item.payload.exact[s.key]), name]
             }}
           />
-          <Legend />
+          <Legend itemSorter={null} /* keep the series order, not alphabetical */ />
           {SERIES.map((s) => (
             <Bar key={s.key} dataKey={s.key} name={s.label} stackId="income" fill={s.color} isAnimationActive={false} />
           ))}

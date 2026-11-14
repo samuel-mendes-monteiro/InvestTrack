@@ -9,6 +9,7 @@ import { FixedIncomePage } from './fixed-income/FixedIncomePage'
 import { IncomePage } from './income/IncomePage'
 import { OperationForm } from './operations/OperationForm'
 import { OperationsPage } from './operations/OperationsPage'
+import { PerformancePage } from './performance/PerformancePage'
 import { PortfolioPage } from './portfolio/PortfolioPage'
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
 // Each screen has its own URL, so reload, back/forward and bookmarks work.
 const PAGES = [
   { path: '/', label: 'Carteira', element: <PortfolioPage /> },
+  { path: '/rentabilidade', label: 'Rentabilidade', element: <PerformancePage /> },
   { path: '/operacoes', label: 'Operações', element: <OperationsPage /> },
   { path: '/proventos', label: 'Proventos', element: <IncomePage /> },
   { path: '/renda-fixa', label: 'Renda fixa', element: <FixedIncomePage /> },
@@ -62,7 +64,7 @@ function Shell() {
           Nova operação
         </button>
         {me.data && <span className="muted email">{me.data.email}</span>}
-        <button onClick={logout} disabled={leaving}>
+        <button onClick={logout} disabled={leaving} title={me.data ? `Sair de ${me.data.email}` : undefined}>
           Sair
         </button>
       </header>

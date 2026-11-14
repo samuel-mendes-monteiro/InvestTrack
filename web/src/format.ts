@@ -173,3 +173,8 @@ export function multiplierToPercent(multiplier: string): string {
   // "E+2" moves the decimal point two places: x100 with no arithmetic at all.
   return quantity(`${sumDecimals([multiplier, '-1'])}E+2`)
 }
+
+/** "112.6" -> "113%": a percentage with no decimals, as in "% do CDI". */
+export function wholePct(value: string | null | undefined): string {
+  return value == null ? '—' : `${toBr(value, 0)}%`
+}

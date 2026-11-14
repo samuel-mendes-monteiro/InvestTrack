@@ -207,3 +207,13 @@ export function useImport() {
   const invalidate = useInvalidateAll()
   return useMutation({ mutationFn: (file: File) => sendStatement('/imports/b3', file), onSuccess: invalidate })
 }
+
+export function usePerformance() {
+  return useQuery({
+    queryKey: ['performance'],
+    queryFn: () => call(api.GET('/performance')),
+    // The first time, the API downloads years of B3, Ibovespa and CDI history
+    // in the background (~1 min). Poll while it says so, then stop.
+    refetchInterval: (query) => (query.state.data?.syncing ? 5000 : false),
+  })
+}
