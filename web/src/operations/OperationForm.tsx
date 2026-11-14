@@ -7,7 +7,7 @@ import {
   type Schemas,
 } from '../api/queries'
 import { Modal } from '../components/Modal'
-import { parseDecimal, quantity, todayIso } from '../format'
+import { decimalField, quantity, todayIso } from '../format'
 import { ASSET_TYPES, OP_TYPES } from '../labels'
 
 type Fields = {
@@ -45,19 +45,6 @@ function fromOperation(o: Operation): Fields {
   }
 }
 
-/** Parse one number field, naming it in the error. */
-function decimal(label: string, text: string, fallback?: string): string {
-  if (!text.trim()) {
-    if (fallback !== undefined) return fallback
-    throw new Error(`Preencha o campo ${label}.`)
-  }
-  try {
-    return parseDecimal(text)
-  } catch {
-    throw new Error(`${label}: '${text}' não é um número válido.`)
-  }
-}
-
 function toInput(f: Fields): OperationInput {
   if (!f.ticker.trim()) throw new Error('Informe o ticker.')
   return {
@@ -66,9 +53,9 @@ function toInput(f: Fields): OperationInput {
     asset_type: f.asset_type,
     date: f.date,
     // Strings, so the values reach the API as exact decimals.
-    quantity: decimal('Quantidade', f.quantity),
-    price: decimal('Preço', f.price),
-    fees: decimal('Taxas', f.fees, '0'),
+    quantity: decimalField('Quantidade', f.quantity),
+    price: decimalField('Preço', f.price),
+    fees: decimalField('Taxas', f.fees, '0'),
   }
 }
 

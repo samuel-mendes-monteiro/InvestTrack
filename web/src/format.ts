@@ -139,3 +139,31 @@ export function toneOf(value: string | null | undefined): 'positive' | 'negative
   if (value == null || isZero(value)) return undefined
   return value.startsWith('-') ? 'negative' : 'positive'
 }
+
+/** value / divisor rounded half-even to 2 places, exactly: an average in reais. */
+export function divideDecimal(value: string, divisor: number): string {
+  if (!Number.isInteger(divisor) || divisor <= 0) throw new Error(`bad divisor: ${divisor}`)
+  const { negative, whole, fraction } = parts(value)
+  const scale = fraction.length
+  const numerator = BigInt(whole + fraction) * 100n // result in cents, before / 10^scale
+  const denominator = BigInt(divisor) * 10n ** BigInt(scale)
+  let cents = numerator / denominator
+  const twice = (numerator % denominator) * 2n
+  if (twice > denominator || (twice === denominator && cents % 2n === 1n)) cents += 1n
+  const digits = cents.toString().padStart(3, '0')
+  const sign = negative && cents !== 0n ? '-' : ''
+  return `${sign}${digits.slice(0, -2)}.${digits.slice(-2)}`
+}
+
+/** Parse one number field, naming it in the error. */
+export function decimalField(label: string, text: string, fallback?: string): string {
+  if (!text.trim()) {
+    if (fallback !== undefined) return fallback
+    throw new Error(`Preencha o campo ${label}.`)
+  }
+  try {
+    return parseDecimal(text)
+  } catch {
+    throw new Error(`${label}: '${text}' não é um número válido.`)
+  }
+}

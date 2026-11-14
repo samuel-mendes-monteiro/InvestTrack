@@ -395,3 +395,26 @@ fieldset.segmented label {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.page-head,
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.page-head p {
+  flex: 1 1 400px;
+  margin: 0;
+}
+
+.section-head h2 {
+  margin-bottom: 12px;
+}
+
+.chart {
+  margin: 8px 0 16px;
+  font-size: 0.8rem;
+}

@@ -13,3 +13,11 @@ export const ASSET_TYPES: Record<Schemas['AssetType'], string> = {
   ETF: 'ETF',
   BDR: 'BDR',
 }
+
+export const INCOME_TYPES: Record<Schemas['IncomeType'], string> = {
+  DIVIDEND: 'Dividendo',
+  JCP: 'JCP',
+  DISTRIBUTION: 'Rendimento (FII)',
+}
+
+export const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']

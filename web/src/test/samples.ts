@@ -52,3 +52,25 @@ export function operation(overrides: Partial<Schemas['OperationOut']> = {}): Sch
     ...overrides,
   }
 }
+
+export function income(overrides: Partial<Schemas['IncomeOut']> = {}): Schemas['IncomeOut'] {
+  return {
+    id: null,
+    ticker: 'PETR4',
+    income_type: 'DIVIDEND',
+    date: '2026-03-20',
+    record_date: '2026-03-05',
+    quantity: '100.00000000',
+    rate: '0.4512',
+    amount: '45.12',
+    tax: '0.00',
+    net: '45.12',
+    source: 'B3',
+    pending: false,
+    ...overrides,
+  }
+}
+
+export function month(year: number, m: number, overrides: Partial<Schemas['MonthlyIncomeOut']> = {}) {
+  return { year, month: m, dividend: '0.00', jcp: '0.00', distribution: '0.00', tax: '0.00', net: '0.00', ...overrides }
+}

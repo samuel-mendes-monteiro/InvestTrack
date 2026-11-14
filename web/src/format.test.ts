@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { brDate, brl, isZero, parseDecimal, pct, perShare, quantity, sumDecimals, todayIso } from './format'
+import { brDate, brl, divideDecimal, isZero, parseDecimal, pct, perShare, quantity, sumDecimals, todayIso } from './format'
 
 // Same cases as the Streamlit helpers' tests, so both frontends agree.
 describe('brl', () => {
@@ -75,3 +75,11 @@ test('todayIso uses the local date, not UTC', () => {
 test.each(['1e3', '1E+3'])('people cannot type exponents (%s)', (text) =>
   expect(() => parseDecimal(text)).toThrow('não é um número válido'),
 )
+
+test('divideDecimal rounds the average exactly, half to even', () => {
+  expect(divideDecimal('100.00', 3)).toBe('33.33')
+  expect(divideDecimal('0.10', 4)).toBe('0.02') // 0.025 -> even
+  expect(divideDecimal('0.30', 4)).toBe('0.08') // 0.075 -> even
+  expect(divideDecimal('1.0000001', 1)).toBe('1.00')
+  expect(divideDecimal('-10', 3)).toBe('-3.33')
+})

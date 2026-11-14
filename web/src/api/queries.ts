@@ -58,3 +58,34 @@ export function useDeleteOperation() {
     onSuccess: invalidate,
   })
 }
+
+export type Income = Schemas['IncomeOut']
+export type IncomeInput = Schemas['IncomeCreate']
+
+export function useIncomes() {
+  return useQuery({ queryKey: ['income'], queryFn: () => call(api.GET('/income')) })
+}
+
+export function useMonthlyIncome(year: number | null) {
+  return useQuery({
+    queryKey: ['income', 'monthly', year],
+    queryFn: () => call(api.GET('/income/monthly', { params: { query: { year: year! } } })),
+    enabled: year != null, // waits until there is a year to ask for
+  })
+}
+
+export function useCreateIncome() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (body: IncomeInput) => call(api.POST('/income', { body })),
+    onSuccess: invalidate,
+  })
+}
+
+export function useDeleteIncome() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (id: number) => call(api.DELETE('/income/{income_id}', { params: { path: { income_id: id } } })),
+    onSuccess: invalidate,
+  })
+}
