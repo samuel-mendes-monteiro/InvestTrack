@@ -980,9 +980,9 @@ export interface components {
             line: number;
             /**
              * Reason
-             * @description UNSUPPORTED_MARKET, UNKNOWN_TYPE or UNREADABLE_ROW
+             * @enum {string}
              */
-            reason: string;
+            reason: "UNSUPPORTED_MARKET" | "UNKNOWN_TYPE" | "UNREADABLE_ROW";
         };
         /** StockEventOut */
         StockEventOut: {

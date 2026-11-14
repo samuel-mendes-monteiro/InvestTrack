@@ -178,3 +178,32 @@ export function useDeletePartialRedemption() {
     onSuccess: invalidate,
   })
 }
+
+export type ImportResult = Schemas['ImportOut']
+
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+/**
+ * The import endpoints take the .xlsx bytes as the whole request body, not a
+ * multipart form. The schema types that body as a string (OpenAPI's
+ * "binary"); the File goes through untouched, with the spreadsheet's type.
+ */
+function sendStatement(path: '/imports/b3/preview' | '/imports/b3', file: File) {
+  return call(
+    api.POST(path, {
+      body: file as unknown as string,
+      bodySerializer: (body) => body as unknown as BodyInit,
+      headers: { 'Content-Type': XLSX },
+    }),
+  )
+}
+
+/** What importing would add. A mutation, not a query: the file is the input, and nothing is cached. */
+export function usePreviewImport() {
+  return useMutation({ mutationFn: (file: File) => sendStatement('/imports/b3/preview', file) })
+}
+
+export function useImport() {
+  const invalidate = useInvalidateAll()
+  return useMutation({ mutationFn: (file: File) => sendStatement('/imports/b3', file), onSuccess: invalidate })
+}

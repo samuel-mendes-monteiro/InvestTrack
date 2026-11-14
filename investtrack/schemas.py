@@ -282,7 +282,7 @@ class ImportRowOut(BaseModel):
 
 class SkippedRowOut(BaseModel):
     line: int
-    reason: str = Field(description="UNSUPPORTED_MARKET, UNKNOWN_TYPE or UNREADABLE_ROW")
+    reason: Literal["UNSUPPORTED_MARKET", "UNKNOWN_TYPE", "UNREADABLE_ROW"]
     detail: str
 
 

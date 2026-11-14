@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useDeleteOperation, useOperations, type Operation } from '../api/queries'
 import { brDate, brl, quantity } from '../format'
 import { OP_TYPES } from '../labels'
+import { ImportDialog } from './ImportDialog'
 import { OperationForm } from './OperationForm'
 import { StockEvents } from './StockEvents'
 
@@ -10,10 +11,27 @@ export function OperationsPage() {
   const remove = useDeleteOperation()
   const [ticker, setTicker] = useState('')
   const [editing, setEditing] = useState<Operation | null>(null)
+  const [importing, setImporting] = useState(false)
 
   if (operations.isPending) return <p className="muted">Carregando operações…</p>
   if (operations.isError) return <p className="alert error">{operations.error.message}</p>
-  if (!operations.data.length) return <p className="muted">Nenhuma operação registrada.</p>
+
+  const importButton = (
+    <button className={operations.data.length ? '' : 'primary'} onClick={() => setImporting(true)}>
+      Importar extrato da B3
+    </button>
+  )
+  const importDialog = importing && <ImportDialog onClose={() => setImporting(false)} />
+
+  if (!operations.data.length) {
+    return (
+      <div className="empty">
+        <p className="muted">Nenhuma operação registrada. Importe o extrato de negociação da B3 ou use “Nova operação”.</p>
+        {importButton}
+        {importDialog}
+      </div>
+    )
+  }
 
   const tickers = [...new Set(operations.data.map((o) => o.ticker))].sort()
   const shown = operations.data.filter((o) => !ticker || o.ticker === ticker)
@@ -35,6 +53,8 @@ export function OperationsPage() {
             ))}
           </select>
         </label>
+        <span className="spacer" />
+        {importButton}
       </div>
       {remove.isError && (
         <p className="alert error" role="alert">
@@ -85,6 +105,7 @@ export function OperationsPage() {
         </table>
       </div>
       <StockEvents />
+      {importDialog}
       {editing && <OperationForm key={editing.id} operation={editing} onClose={() => setEditing(null)} />}
     </>
   )

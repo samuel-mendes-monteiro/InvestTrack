@@ -33,3 +33,16 @@ export const FI_PRODUCTS: Schemas['Product'][] = ['CDB', 'LCI', 'LCA']
 export const FI_INDEXERS: Record<Schemas['Indexer'], string> = { CDI: '% do CDI', PRE: 'Prefixado', IPCA: 'IPCA+' }
 
 export const FI_STATUS: Record<Schemas['FixedIncomeOut']['status'], string> = { ACTIVE: 'Aplicado', REDEEMED: 'Resgatado', MATURED: 'Vencido' }
+
+export const IMPORT_STATUS: Record<Schemas['ImportRowOut']['status'], string> = {
+  NEW: 'Nova',
+  DUPLICATE: 'Já registrada',
+  REJECTED: 'Recusada',
+  IMPORTED: 'Importada',
+}
+
+export const SKIP_REASONS: Record<Schemas['SkippedRowOut']['reason'], string> = {
+  UNSUPPORTED_MARKET: 'mercado não suportado (opções, termo, futuro...)',
+  UNKNOWN_TYPE: 'não é compra nem venda',
+  UNREADABLE_ROW: 'linha ilegível',
+}

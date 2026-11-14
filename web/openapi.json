@@ -1407,7 +1407,11 @@
             "type": "integer"
           },
           "reason": {
-            "description": "UNSUPPORTED_MARKET, UNKNOWN_TYPE or UNREADABLE_ROW",
+            "enum": [
+              "UNSUPPORTED_MARKET",
+              "UNKNOWN_TYPE",
+              "UNREADABLE_ROW"
+            ],
             "title": "Reason",
             "type": "string"
           }

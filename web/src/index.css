@@ -460,3 +460,38 @@ button.link {
   color: var(--accent);
   text-align: left;
 }
+
+.alert.success {
+  border-color: var(--positive);
+  color: var(--positive);
+}
+
+.scroll-y {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+td.wrap {
+  white-space: normal !important;
+  min-width: 220px;
+}
+
+tr.negative td {
+  color: var(--negative);
+}
+
+tr.muted td {
+  color: var(--muted);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+ul.small {
+  margin: 0;
+  padding-left: 20px;
+}
