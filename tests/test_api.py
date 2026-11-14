@@ -21,8 +21,15 @@ def client():
 
 
 def op(op_type="BUY", qty="100", price="30", fees="0", ticker="PETR4", day="2026-01-01", **extra):
-    return {"ticker": ticker, "op_type": op_type, "date": day,
-            "quantity": qty, "price": price, "fees": fees, **extra}
+    return {
+        "ticker": ticker,
+        "op_type": op_type,
+        "date": day,
+        "quantity": qty,
+        "price": price,
+        "fees": fees,
+        **extra,
+    }
 
 
 def test_health(client):
@@ -32,6 +39,7 @@ def test_health(client):
 
 
 # --- POST /operations --------------------------------------------------------
+
 
 def test_create_operation(client):
     r = client.post("/operations", json=op(ticker="petr4", price="30.10"))
@@ -48,16 +56,19 @@ def test_json_numbers_are_parsed_without_float_errors(client):
     assert Decimal(r.json()["price"]) + Decimal(r.json()["fees"]) == Decimal("0.3")
 
 
-@pytest.mark.parametrize("field, value", [
-    ("quantity", "0"),
-    ("quantity", "-5"),
-    ("price", "-1"),
-    ("fees", "-1"),
-    ("op_type", "HOLD"),
-    ("ticker", ""),
-    ("ticker", "   "),
-    ("date", "not-a-date"),
-])
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("quantity", "0"),
+        ("quantity", "-5"),
+        ("price", "-1"),
+        ("fees", "-1"),
+        ("op_type", "HOLD"),
+        ("ticker", ""),
+        ("ticker", "   "),
+        ("date", "not-a-date"),
+    ],
+)
 def test_invalid_operation_is_rejected(client, field, value):
     r = client.post("/operations", json=op(**{field: value}))
     assert r.status_code == 422
@@ -72,11 +83,18 @@ def test_selling_more_than_owned_is_rejected(client):
     client.post("/operations", json=op(qty="100"))
     r = client.post("/operations", json=op("SELL", qty="101", day="2026-01-02"))
     assert r.status_code == 422
-    assert "only 100 available" in r.json()["detail"]
+    assert r.json()["detail"] == {
+        "code": "INSUFFICIENT_POSITION",
+        "message": "Cannot sell 101 PETR4: only 100 available",
+        "ticker": "PETR4",
+        "available": "100",
+        "requested": "101",
+    }
     assert len(client.get("/operations").json()) == 1
 
 
 # --- GET /operations ---------------------------------------------------------
+
 
 def test_list_operations_ordered_and_filtered(client):
     client.post("/operations", json=op(ticker="HGLG11", day="2026-01-05"))
@@ -91,6 +109,7 @@ def test_list_operations_ordered_and_filtered(client):
 
 # --- DELETE /operations/{id} -------------------------------------------------
 
+
 def test_delete_operation(client):
     created = client.post("/operations", json=op()).json()
     assert client.delete(f"/operations/{created['id']}").status_code == 204
@@ -98,7 +117,9 @@ def test_delete_operation(client):
 
 
 def test_delete_unknown_operation(client):
-    assert client.delete("/operations/999").status_code == 404
+    r = client.delete("/operations/999")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "OPERATION_NOT_FOUND"
 
 
 def test_delete_that_breaks_a_later_sale_is_refused(client):
@@ -106,10 +127,12 @@ def test_delete_that_breaks_a_later_sale_is_refused(client):
     client.post("/operations", json=op("SELL", qty="80", day="2026-01-02"))
     r = client.delete(f"/operations/{first_buy['id']}")
     assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "DELETE_BREAKS_LATER_SALE"
     assert len(client.get("/operations").json()) == 2
 
 
 # --- GET /portfolio ----------------------------------------------------------
+
 
 def test_portfolio_example_from_project_doc(client):
     client.post("/operations", json=op(qty="100", price="30", day="2026-01-01"))
@@ -136,8 +159,8 @@ def test_portfolio_example_from_project_doc(client):
 
 
 def test_portfolio_totals_across_assets(client):
-    client.post("/operations", json=op(qty="100", price="30"))                       # 3000 -> 3800
-    client.post("/operations", json=op(ticker="HGLG11", qty="10", price="150"))      # 1500 -> 1600
+    client.post("/operations", json=op(qty="100", price="30"))  # 3000 -> 3800
+    client.post("/operations", json=op(ticker="HGLG11", qty="10", price="150"))  # 1500 -> 1600
     totals = client.get("/portfolio").json()["totals"]
     assert totals["invested"] == "4500.00"
     assert totals["current_value"] == "5400.00"

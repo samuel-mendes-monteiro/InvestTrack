@@ -1,8 +1,13 @@
 # InvestTrack
 
-> A personal investment portfolio tracker for the Brazilian stock market (B3).
+[![CI](https://github.com/samuel-mendes-monteiro/InvestTrack/actions/workflows/ci.yml/badge.svg)](https://github.com/samuel-mendes-monteiro/InvestTrack/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.14-blue)
+![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-🚧 **Status:** early development. See the [roadmap](#roadmap) below.
+> A personal investment portfolio tracker for the Brazilian stock market (B3), with live quotes and exact average-cost and profit calculations.
+
+![Portfolio view: totals, positions with live quotes and allocation chart](docs/portfolio.jpg)
 
 ## The problem
 
@@ -13,11 +18,13 @@ People who invest through more than one broker don't get a single view of their 
 InvestTrack is a web app where you record your buy and sell trades and get back:
 
 - your current position in each asset
-- the average cost (*preço médio*)
+- the average cost (*preço médio*), including fees
 - realized and unrealized profit/loss, in R$ and in %
 - how your portfolio is split across assets
 
-Quotes from B3 are updated automatically.
+Quotes from B3 are fetched automatically from [brapi.dev](https://brapi.dev). Invalid operations, such as selling more shares than you own on that date, are refused with a clear message:
+
+![Selling more than owned is refused](docs/validation.jpg)
 
 ## Core design principle
 
@@ -25,28 +32,27 @@ Quotes from B3 are updated automatically.
 
 Positions (quantity, average cost) are **never stored** in the database. They are always **recalculated** from the list of trades. Editing or deleting an old trade therefore updates everything automatically, and the data can never become inconsistent.
 
-## MVP scope
+## Architecture
 
-| In the MVP | Later (roadmap) |
+```mermaid
+flowchart LR
+    UI["<b>Frontend</b><br/>Streamlit"] -- "HTTP / JSON" --> API["<b>API</b><br/>FastAPI"]
+    API --> Core["<b>Calculation core</b><br/>pure Python, no I/O"]
+    API --> Repo["<b>Repository</b><br/>SQLAlchemy"]
+    Repo --> DB[("SQLite / PostgreSQL")]
+    API --> Prices["<b>Price cache</b><br/>15 min, fallback"]
+    Prices -- "HTTPS + token" --> Brapi["brapi.dev"]
+    Prices --> DB
+```
+
+| Module | Responsibility |
 |---|---|
-| Record buy/sell trades (ticker, date, quantity, price, fees) | Dividends, JCP and REIT (FII) income |
-| List and delete trades | Historical performance chart |
-| Position, average cost and realized profit | Benchmark against CDI and Ibovespa |
-| Live quotes, with results in R$ and % | Fixed income (CDB, LCI, LCA) |
-| Portfolio allocation chart | Login and multiple users |
-| Stocks, FIIs, ETFs and BDRs | B3 statement import and tax (IR) calculation |
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| Language | Python 3.12+ |
-| API | FastAPI + Pydantic |
-| Database | SQLite (dev), PostgreSQL (prod) via SQLAlchemy 2.0 |
-| Market data | [brapi.dev](https://brapi.dev) |
-| UI (MVP) | Streamlit + Plotly |
-| UI (v1.0) | React |
-| Tests | pytest |
+| [`investtrack/portfolio.py`](investtrack/portfolio.py) | Average cost, realized and unrealized profit. Pure functions: no database, no HTTP |
+| [`investtrack/repository.py`](investtrack/repository.py) | Saves and reads trades; validates every change through the calculation core |
+| [`investtrack/api.py`](investtrack/api.py) | Thin HTTP layer: converts JSON, calls the repository, maps errors to status codes |
+| [`investtrack/prices.py`](investtrack/prices.py) | Quote cache with fallback to the last known price |
+| [`investtrack/brapi.py`](investtrack/brapi.py) | The only module that knows brapi's URL and JSON format |
+| [`frontend/`](frontend) | Streamlit UI, a pure HTTP client of the API |
 
 ## Calculation rules
 
@@ -62,33 +68,40 @@ new_avg = (current_qty × current_avg + bought_qty × price + fees) / (current_q
 realized_profit += sold_qty × (sell_price − avg) − fees
 ```
 
-Trades are processed **in date order** (not in the order they were entered), and a sale can never leave a negative quantity.
+Trades are processed **in date order** (not in the order they were entered), and a sale can never leave a negative quantity. Selling a whole position resets the average cost, so a later purchase starts fresh.
 
 ## Technical decisions
 
-- **No `float` for money.** `Decimal` in Python and `Numeric` in the database, because `0.1 + 0.2 != 0.3` in floating point.
-- **Calculations are isolated** in a pure module with no database or HTTP access. It takes a list of trades and returns positions, which makes it easy to test.
-- **The API token stays on the server.** The frontend never calls brapi directly.
-- **Decimals are stored as text on SQLite.** SQLite has no real decimal type, so SQLAlchemy would store `Numeric` as a float. A custom column type keeps exact values on SQLite and uses native `NUMERIC` on PostgreSQL.
-- **Money is sent as JSON strings** (`"35.10"`), not numbers, so API clients never parse it into a float. Values are rounded to 2 decimals only in the response.
-- **Quotes are cached** in the database for 15 minutes per ticker, so the cache survives restarts and stays within brapi's free quota. If brapi is down, the last known price is shown and flagged as stale, together with when it was fetched.
+- **No `float` for money.** `Decimal` everywhere, because `0.1 + 0.2 != 0.3` in floating point. This is enforced, not just a convention: the core rejects floats, JSON numbers from brapi and from clients are parsed straight into `Decimal`, and money is typed into text fields (accepting `30,50` or `1.234,56`) because Streamlit's number input returns a float.
+- **Decimals are stored as text on SQLite.** SQLite has no real decimal type, so SQLAlchemy would silently store `Numeric` as a float. A custom column type keeps exact values on SQLite and uses native `NUMERIC` on PostgreSQL.
+- **Rounding happens only for display.** Calculations keep full precision; the API rounds to 2 decimals only in the response, and sends money as JSON strings (`"35.10"`) so clients never turn it into a float.
+- **Calculations are isolated** in a pure module that takes a list of trades and returns positions. The repository reuses it to validate changes: adding a sale, or deleting a purchase that a later sale depends on, is refused before anything is saved.
+- **Errors have stable codes.** The API returns `{"code": "INSUFFICIENT_POSITION", "ticker": ..., "available": ...}`; the frontend translates codes into Portuguese. The backend stays language-neutral.
+- **Quotes are cached** in the database for 15 minutes per ticker, so the cache survives restarts and stays within brapi's free quota. If brapi is down, the last known price is shown, flagged as stale, together with when it was fetched.
 - **Outages vs. per-ticker errors.** A timeout or 5xx pauses calls to brapi for a minute, so a portfolio with many tickers doesn't wait for one timeout per ticker. A 401/404 only affects that ticker.
-- **The frontend never imports the backend.** It is a pure HTTP client of the API, so the Streamlit UI can later be replaced by React without touching the backend. Money is typed into text fields (accepting `30,50` or `1.234,56`) because Streamlit's number input returns a float.
-- **Tests never touch the internet.** The HTTP session, the quote source and even the clock are replaced by fakes, so tests are fast, deterministic and don't spend the API quota.
+- **The API token stays on the server**, in a `.env` file that is never committed, and is sent in a header rather than in the URL (URLs end up in logs).
+- **The frontend never imports the backend.** It only talks to the API over HTTP, so the Streamlit UI can later be replaced by React without touching the backend.
 
-## Roadmap
+## Testing
 
-- [x] **Stage 0:** project setup
-- [x] **Stage 1:** pure calculation logic + tests
-- [x] **Stage 2:** database (SQLAlchemy)
-- [x] **Stage 3:** REST API (FastAPI)
-- [x] **Stage 4:** live quotes (brapi) with caching
-- [x] **Stage 5:** Streamlit UI
-- [ ] **Stage 6:** CI with GitHub Actions + polish
+```bash
+pytest --cov
+```
 
-After the MVP: dividends (v0.2), time-weighted return (v0.3), fixed income (v0.4), authentication (v0.5), B3 import (v0.6), React frontend + deployment (v1.0).
+104 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
+
+The calculation tests include the worked example used to design the rules:
+
+| Trade | Quantity | Average cost | Realized profit |
+|---|---|---|---|
+| Buy 100 PETR4 at R$ 30 | 100 | R$ 30.00 | R$ 0 |
+| Buy 100 PETR4 at R$ 40 | 200 | R$ 35.00 | R$ 0 |
+| Sell 50 PETR4 at R$ 50 | 150 | R$ 35.00 (unchanged) | R$ 750 |
+| Quote at R$ 38 | 150 | R$ 35.00 | Unrealized: R$ 450 (+8.57%) |
 
 ## Getting started
+
+Requires Python 3.12+.
 
 ```bash
 git clone https://github.com/samuel-mendes-monteiro/InvestTrack.git
@@ -98,47 +111,63 @@ source .venv/bin/activate
 pip install -e ".[dev,ui]"
 ```
 
-Run the tests:
-
-```bash
-pytest
-```
-
-Create a local SQLite database with sample trades and print the portfolio:
-
-```bash
-python -m investtrack.demo
-```
-
-Start the API and open the interactive docs at http://localhost:8000/docs:
-
-```bash
-uvicorn investtrack.api:app --reload
-```
-
-| Method | Route | Description |
-|---|---|---|
-| `POST` | `/operations` | Record a buy or sell (refuses selling more than owned) |
-| `GET` | `/operations` | List operations, optionally filtered by `?ticker=` |
-| `DELETE` | `/operations/{id}` | Delete an operation (refuses if a later sale would break) |
-| `GET` | `/portfolio` | Positions, current prices and portfolio totals |
-| `GET` | `/health` | Health check |
-
-Quotes come from [brapi.dev](https://brapi.dev). To configure them, copy the example settings and add your free brapi token (without a token, only PETR4, VALE3, MGLU3 and ITUB4 work):
+Quotes come from brapi.dev. Copy the example settings and add your free brapi token (without a token, only PETR4, VALE3, MGLU3 and ITUB4 work):
 
 ```bash
 cp .env.example .env
 ```
 
-With the API running, start the web interface in another terminal and open http://localhost:8501:
+Optionally, create a database with sample trades:
+
+```bash
+python -m investtrack.demo
+```
+
+Start the API (interactive docs at http://localhost:8000/docs):
+
+```bash
+uvicorn investtrack.api:app --reload
+```
+
+In another terminal, start the web interface (http://localhost:8501):
 
 ```bash
 streamlit run frontend/app.py
 ```
 
-The interface only talks to the API over HTTP (set `API_URL` if it is not on `http://localhost:8000`).
+### API
 
-The database URL can be changed with the `DATABASE_URL` environment variable (default: `sqlite:///investtrack.db`).
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/operations` | Record a buy or sell (422 if selling more than owned) |
+| `GET` | `/operations` | List operations, optionally filtered by `?ticker=` |
+| `DELETE` | `/operations/{id}` | Delete an operation (409 if a later sale depends on it) |
+| `GET` | `/portfolio` | Positions, live prices and portfolio totals |
+| `GET` | `/health` | Health check |
+
+### Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `BRAPI_TOKEN` | *(empty)* | brapi.dev token |
+| `PRICE_CACHE_MINUTES` | `15` | How long a quote is reused |
+| `DATABASE_URL` | `sqlite:///investtrack.db` | Any SQLAlchemy URL, e.g. PostgreSQL |
+| `API_URL` | `http://localhost:8000` | Where the frontend finds the API |
+
+## Roadmap
+
+- [x] Calculation core with tests
+- [x] Database (SQLAlchemy)
+- [x] REST API (FastAPI)
+- [x] Live quotes (brapi) with caching
+- [x] Streamlit UI
+- [x] CI with GitHub Actions
+- [ ] **v0.2:** dividends, JCP and REIT (FII) income
+- [ ] **v0.3:** historical performance with time-weighted return (TWR), compared with CDI and Ibovespa
+- [ ] **v0.4:** fixed income (CDB, LCI, LCA)
+- [ ] **v0.5:** login and multiple users
+- [ ] **v0.6:** import B3 trade statements
+- [ ] **v1.0:** React frontend and cloud deployment
 
 ## License
 

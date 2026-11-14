@@ -51,6 +51,23 @@ SessionDep = Annotated[Session, Depends(get_session)]
 PricesDep = Annotated[PriceProvider, Depends(get_price_provider)]
 
 
+def api_error(status_code: int, code: str, error: Exception) -> HTTPException:
+    """An HTTP error with a stable machine-readable code.
+
+    Clients translate the code into their own language and can use the
+    extra fields (ticker, available, requested) to build the message.
+    The English `message` is a fallback for codes a client doesn't know.
+    """
+    detail = {"code": code, "message": str(error)}
+    if isinstance(error, InsufficientPositionError):
+        detail |= {
+            "ticker": error.ticker,
+            "available": str(error.available),
+            "requested": str(error.requested),
+        }
+    return HTTPException(status_code, detail)
+
+
 def to_out(record: OperationRecord) -> OperationOut:
     return OperationOut(
         id=record.id,
@@ -110,7 +127,9 @@ def create_app(
         "/operations",
         status_code=status.HTTP_201_CREATED,
         tags=["operations"],
-        responses={422: {"description": "Invalid data, or selling more than owned"}},
+        responses={
+            422: {"model": ErrorOut, "description": "Invalid data, or selling more than owned"}
+        },
     )
     def create_operation(payload: OperationCreate, session: SessionDep) -> OperationOut:
         try:
@@ -124,9 +143,9 @@ def create_app(
             )
             record = repository.add_operation(session, op, payload.asset_type)
         except InsufficientPositionError as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e))
+            raise api_error(422, "INSUFFICIENT_POSITION", e) from e
         except ValueError as e:  # domain validation, e.g. a blank ticker
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e))
+            raise api_error(422, "INVALID_OPERATION", e) from e
         return to_out(record)
 
     @app.get("/operations", tags=["operations"])
@@ -149,12 +168,9 @@ def create_app(
         try:
             repository.delete_operation(session, operation_id)
         except repository.OperationNotFoundError as e:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
+            raise api_error(404, "OPERATION_NOT_FOUND", e) from e
         except InsufficientPositionError as e:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                f"Deleting this operation would break a later sale: {e}",
-            )
+            raise api_error(409, "DELETE_BREAKS_LATER_SALE", e) from e
 
     @app.get("/portfolio", tags=["portfolio"])
     def get_portfolio(session: SessionDep, prices: PricesDep) -> PortfolioOut:
@@ -180,19 +196,21 @@ def create_app(
                 if total_value is not None:
                     total_value += valuation.current_value
 
-            positions.append(PositionOut(
-                ticker=pos.ticker,
-                quantity=pos.quantity,
-                avg_price=pos.avg_price,
-                realized_profit=pos.realized_profit,
-                current_price=quote.price if quote else None,
-                price_as_of=quote.as_of if quote else None,
-                price_stale=quote.stale if quote else False,
-                invested=invested,
-                current_value=valuation.current_value if valuation else None,
-                result=valuation.result if valuation else None,
-                result_pct=valuation.result_pct if valuation else None,
-            ))
+            positions.append(
+                PositionOut(
+                    ticker=pos.ticker,
+                    quantity=pos.quantity,
+                    avg_price=pos.avg_price,
+                    realized_profit=pos.realized_profit,
+                    current_price=quote.price if quote else None,
+                    price_as_of=quote.as_of if quote else None,
+                    price_stale=quote.stale if quote else False,
+                    invested=invested,
+                    current_value=valuation.current_value if valuation else None,
+                    result=valuation.result if valuation else None,
+                    result_pct=valuation.result_pct if valuation else None,
+                )
+            )
 
         total_result = None if total_value is None else total_value - total_invested
         total_pct = (

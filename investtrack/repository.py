@@ -94,9 +94,7 @@ def delete_operation(session: Session, operation_id: int) -> None:
         raise OperationNotFoundError(operation_id)
 
     remaining = [
-        to_domain(r)
-        for r in list_operations(session, record.asset.ticker)
-        if r.id != operation_id
+        to_domain(r) for r in list_operations(session, record.asset.ticker) if r.id != operation_id
     ]
     if remaining:
         calculate_position(remaining)  # raises if the remaining list is invalid

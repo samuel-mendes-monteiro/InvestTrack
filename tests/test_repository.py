@@ -29,13 +29,15 @@ def session():
 
 
 def buy(day: int, qty: str, price: str, fees: str = "0", ticker: str = "PETR4"):
-    return Operation(ticker, OpType.BUY, date(2026, 1, day),
-                     Decimal(qty), Decimal(price), Decimal(fees))
+    return Operation(
+        ticker, OpType.BUY, date(2026, 1, day), Decimal(qty), Decimal(price), Decimal(fees)
+    )
 
 
 def sell(day: int, qty: str, price: str, fees: str = "0", ticker: str = "PETR4"):
-    return Operation(ticker, OpType.SELL, date(2026, 1, day),
-                     Decimal(qty), Decimal(price), Decimal(fees))
+    return Operation(
+        ticker, OpType.SELL, date(2026, 1, day), Decimal(qty), Decimal(price), Decimal(fees)
+    )
 
 
 def test_decimal_round_trip_is_exact(session):
@@ -61,15 +63,27 @@ def test_asset_type_is_saved(session):
 
 
 def test_ticker_must_be_unique(session):
-    session.add_all([Asset(ticker="PETR4", asset_type=AssetType.STOCK),
-                     Asset(ticker="PETR4", asset_type=AssetType.STOCK)])
+    session.add_all(
+        [
+            Asset(ticker="PETR4", asset_type=AssetType.STOCK),
+            Asset(ticker="PETR4", asset_type=AssetType.STOCK),
+        ]
+    )
     with pytest.raises(IntegrityError):
         session.commit()
 
 
 def test_foreign_keys_are_enforced(session):
-    session.add(OperationRecord(asset_id=999, op_type=OpType.BUY, date=date(2026, 1, 1),
-                                quantity=Decimal("1"), price=Decimal("1"), fees=Decimal("0")))
+    session.add(
+        OperationRecord(
+            asset_id=999,
+            op_type=OpType.BUY,
+            date=date(2026, 1, 1),
+            quantity=Decimal("1"),
+            price=Decimal("1"),
+            fees=Decimal("0"),
+        )
+    )
     with pytest.raises(IntegrityError):
         session.commit()
 

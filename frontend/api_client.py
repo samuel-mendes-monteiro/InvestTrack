@@ -14,7 +14,9 @@ class ApiError(Exception):
 
 
 class ApiClient:
-    def __init__(self, base_url: str, timeout: float = 15.0, session: requests.Session | None = None):
+    def __init__(
+        self, base_url: str, timeout: float = 15.0, session: requests.Session | None = None
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = session or requests.Session()
@@ -51,22 +53,74 @@ class ApiClient:
         return r.json(parse_float=Decimal)
 
 
-def error_message(response: requests.Response) -> str:
-    """Turn FastAPI error bodies into one readable sentence.
+FIELD_NAMES = {
+    "ticker": "Ticker",
+    "op_type": "Tipo",
+    "date": "Data",
+    "quantity": "Quantidade",
+    "price": "Preço",
+    "fees": "Taxas",
+    "asset_type": "Classe do ativo",
+}
 
-    Our own errors have {"detail": "text"}; Pydantic validation errors have
-    {"detail": [{"loc": [...], "msg": "..."}, ...]}.
+
+def _qty(value: str) -> str:
+    return str(value).rstrip("0").rstrip(".") if "." in str(value) else str(value)
+
+
+def _domain_error(d: dict) -> str:
+    """Our API's errors, translated from their stable code."""
+    match d.get("code"):
+        case "INSUFFICIENT_POSITION":
+            return (
+                f"Você tem {_qty(d['available'])} {d['ticker']} nessa data e "
+                f"tentou vender {_qty(d['requested'])}."
+            )
+        case "DELETE_BREAKS_LATER_SALE":
+            return (
+                f"Apagar essa operação deixaria uma venda posterior de {d['ticker']} "
+                "sem ações suficientes. Apague a venda primeiro."
+            )
+        case "OPERATION_NOT_FOUND":
+            return "Operação não encontrada. Talvez ela já tenha sido apagada."
+        case _:
+            return d.get("message", "Erro desconhecido da API.")
+
+
+def _validation_error(err: dict) -> str:
+    """One Pydantic validation error, e.g. price < 0, in Portuguese."""
+    field = FIELD_NAMES.get(err["loc"][-1], err["loc"][-1]) if err.get("loc") else "Campo"
+    ctx = err.get("ctx", {})
+    messages = {
+        "greater_than": f"deve ser maior que {ctx.get('gt')}",
+        "greater_than_equal": "não pode ser negativo",
+        "string_too_short": "não pode ficar vazio",
+        "string_too_long": f"pode ter no máximo {ctx.get('max_length')} caracteres",
+        "decimal_parsing": "não é um número válido",
+        "enum": "valor inválido",
+        "missing": "é obrigatório",
+    }
+    if err.get("type") in messages:
+        return f"{field} {messages[err['type']]}"
+    if "future" in err.get("msg", ""):
+        return "A data não pode estar no futuro"
+    return f"{field}: {err.get('msg', 'inválido')}"
+
+
+def error_message(response: requests.Response) -> str:
+    """Turn API error bodies into one readable sentence in Portuguese.
+
+    Our own errors have {"detail": {"code": ..., ...}}; Pydantic validation
+    errors have {"detail": [{"loc": [...], "type": ..., "msg": ...}, ...]}.
     """
     try:
         detail = response.json().get("detail")
     except ValueError:
         return f"Erro {response.status_code} da API."
+    if isinstance(detail, dict):
+        return _domain_error(detail)
+    if isinstance(detail, list):
+        return "; ".join(_validation_error(err) for err in detail) + "."
     if isinstance(detail, str):
         return detail
-    if isinstance(detail, list):
-        parts = []
-        for err in detail:
-            field = err.get("loc", [])[-1] if err.get("loc") else ""
-            parts.append(f"{field}: {err.get('msg', '')}".strip(": "))
-        return "; ".join(parts)
     return f"Erro {response.status_code} da API."

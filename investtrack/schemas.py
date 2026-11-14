@@ -58,7 +58,9 @@ class PositionOut(BaseModel):
     realized_profit: Money
     current_price: Money | None
     price_as_of: datetime | None = Field(description="When the price was fetched")
-    price_stale: bool = Field(description="True if the quote source failed and an old price is shown")
+    price_stale: bool = Field(
+        description="True if the quote source failed and an old price is shown"
+    )
     invested: Money
     current_value: Money | None
     result: Money | None
@@ -78,5 +80,13 @@ class PortfolioOut(BaseModel):
     totals: PortfolioTotals
 
 
+class ErrorDetail(BaseModel):
+    code: str = Field(examples=["INSUFFICIENT_POSITION"])
+    message: str = Field(description="English fallback text")
+    ticker: str | None = None
+    available: Decimal | None = None
+    requested: Decimal | None = None
+
+
 class ErrorOut(BaseModel):
-    detail: str
+    detail: ErrorDetail

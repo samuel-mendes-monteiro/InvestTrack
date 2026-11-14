@@ -25,9 +25,7 @@ class InsufficientPositionError(ValueError):
         self.ticker = ticker
         self.available = available
         self.requested = requested
-        super().__init__(
-            f"Cannot sell {requested} {ticker}: only {available} available"
-        )
+        super().__init__(f"Cannot sell {requested} {ticker}: only {available} available")
 
 
 @dataclass(frozen=True)

@@ -29,14 +29,10 @@ class Asset(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ticker: Mapped[str] = mapped_column(String(12), unique=True)
-    asset_type: Mapped[AssetType] = mapped_column(
-        Enum(AssetType, native_enum=False, length=10)
-    )
+    asset_type: Mapped[AssetType] = mapped_column(Enum(AssetType, native_enum=False, length=10))
     name: Mapped[str | None] = mapped_column(String(100))
 
-    operations: Mapped[list["OperationRecord"]] = relationship(
-        back_populates="asset"
-    )
+    operations: Mapped[list["OperationRecord"]] = relationship(back_populates="asset")
 
     def __repr__(self) -> str:
         return f"Asset({self.ticker})"
@@ -47,9 +43,7 @@ class OperationRecord(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"))
-    op_type: Mapped[OpType] = mapped_column(
-        Enum(OpType, native_enum=False, length=10)
-    )
+    op_type: Mapped[OpType] = mapped_column(Enum(OpType, native_enum=False, length=10))
     date: Mapped[date] = mapped_column(Date)
     quantity: Mapped[Decimal] = mapped_column(SafeDecimal)
     price: Mapped[Decimal] = mapped_column(SafeDecimal)

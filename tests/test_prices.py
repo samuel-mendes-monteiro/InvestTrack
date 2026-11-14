@@ -38,8 +38,9 @@ def clock():
 
 
 def make_provider(engine, clock, fetch):
-    return CachedPriceProvider(engine, fetch, ttl=timedelta(minutes=15),
-                               retry_after=timedelta(minutes=1), clock=clock)
+    return CachedPriceProvider(
+        engine, fetch, ttl=timedelta(minutes=15), retry_after=timedelta(minutes=1), clock=clock
+    )
 
 
 def test_first_call_fetches_and_caches(engine, clock):
@@ -95,11 +96,11 @@ def test_after_an_outage_the_api_is_not_retried_immediately(engine, clock):
     provider = make_provider(engine, clock, fetch)
 
     provider.get_quote("PETR4")
-    provider.get_quote("VALE3")   # within retry_after: no call, no timeout wait
+    provider.get_quote("VALE3")  # within retry_after: no call, no timeout wait
     assert fetch.call_count == 1
 
     clock.advance(minutes=1)
-    provider.get_quote("VALE3")   # retry window over: tries again
+    provider.get_quote("VALE3")  # retry window over: tries again
     assert fetch.call_count == 2
 
 

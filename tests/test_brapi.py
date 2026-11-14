@@ -65,25 +65,31 @@ def test_no_token_no_header():
     assert "Authorization" not in session.headers
 
 
-@pytest.mark.parametrize("error", [
-    requests.Timeout("timed out"),
-    requests.ConnectionError("no internet"),
-])
+@pytest.mark.parametrize(
+    "error",
+    [
+        requests.Timeout("timed out"),
+        requests.ConnectionError("no internet"),
+    ],
+)
 def test_network_errors_mean_source_down(error):
     client, _ = client_returning(error=error)
     with pytest.raises(SourceDownError):
         client.fetch_price("PETR4")
 
 
-@pytest.mark.parametrize("status, body", [
-    (401, '{"error":true,"code":"MISSING_TOKEN"}'),
-    (404, '{"error":true,"message":"not found"}'),
-    (200, "<html>not json</html>"),
-    (200, '{"results":[]}'),
-    (200, '{"results":[{"symbol":"PETR4"}]}'),
-    (200, '{"results":[{"regularMarketPrice":null}]}'),
-    (200, '{"results":[{"regularMarketPrice":0}]}'),
-])
+@pytest.mark.parametrize(
+    "status, body",
+    [
+        (401, '{"error":true,"code":"MISSING_TOKEN"}'),
+        (404, '{"error":true,"message":"not found"}'),
+        (200, "<html>not json</html>"),
+        (200, '{"results":[]}'),
+        (200, '{"results":[{"symbol":"PETR4"}]}'),
+        (200, '{"results":[{"regularMarketPrice":null}]}'),
+        (200, '{"results":[{"regularMarketPrice":0}]}'),
+    ],
+)
 def test_bad_responses(status, body):
     client, _ = client_returning(fake_response(status, body))
     with pytest.raises(QuoteUnavailableError):
