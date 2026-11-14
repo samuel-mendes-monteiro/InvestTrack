@@ -129,6 +129,34 @@ def on_delete(operation_id: int) -> None:
     flash("success", f"Operação #{operation_id} apagada.")
 
 
+def bonus_label(e: dict) -> str:
+    """'PETR4 · 10% em 01/02/2026'"""
+    day = date.fromisoformat(e["record_date"]).strftime("%d/%m/%Y")
+    percent = quantity((Decimal(e["multiplier"]) - 1) * 100)
+    return f"{e['ticker']} · {percent}% em {day}"
+
+
+def on_set_bonus_cost(bonus: dict) -> None:
+    s = st.session_state
+    try:
+        unit_cost = field_decimal("Custo atribuído", s.b_cost)
+        api.set_bonus_cost(bonus["ticker"], bonus["record_date"], str(unit_cost))
+    except (ValueError, ApiError) as e:
+        flash("error", f"Custo não salvo: {e}")
+        return
+    flash("success", f"Custo atribuído de {bonus_label(bonus)} salvo.")
+    s["b_cost"] = ""
+
+
+def on_delete_bonus_cost(bonus: dict) -> None:
+    try:
+        api.delete_bonus_cost(bonus["ticker"], bonus["record_date"])
+    except ApiError as e:
+        flash("error", f"Não foi possível remover: {e}")
+        return
+    flash("success", f"Custo atribuído de {bonus_label(bonus)} removido.")
+
+
 def on_create_income() -> None:
     s = st.session_state
     try:
@@ -338,6 +366,13 @@ elif view == "Operações":
                             "Ticker": e["ticker"],
                             "Antes": quantity(e["quantity_before"]),
                             "Depois": quantity(e["quantity_after"]),
+                            "Custo atribuído": (
+                                "não informado"
+                                if e["unit_cost"] is None
+                                else per_share(e["unit_cost"])
+                            )
+                            if e["event_type"] == "BONUS"
+                            else "",
                         }
                         for e in applied
                     ]
@@ -345,12 +380,32 @@ elif view == "Operações":
                 hide_index=True,
                 width="stretch",
             )
-            if any(e["event_type"] == "BONUS" for e in applied):
+            bonuses = [e for e in applied if e["event_type"] == "BONUS"]
+            if any(e["unit_cost"] is None for e in bonuses):
                 st.warning(
-                    "Bonificação: as ações novas entraram com custo zero, porque a B3 não "
-                    "publica o custo atribuído. Para o IR, confira o valor informado pela "
-                    "empresa: ele aumenta o preço médio."
+                    "Há bonificação sem custo atribuído: as ações novas entraram com custo "
+                    "zero, o que deixa o preço médio abaixo do valor para o IR. Informe o "
+                    "custo abaixo."
                 )
+            if bonuses:
+                with st.expander("Custo atribuído das bonificações"):
+                    st.caption(
+                        "O valor por ação está no aviso aos acionistas da empresa e no informe "
+                        "de rendimentos da corretora. A B3 não publica esse dado."
+                    )
+                    labels = {bonus_label(e): e for e in bonuses}
+                    chosen = st.selectbox("Bonificação", list(labels), key="b_event")
+                    bonus = labels[chosen]
+                    st.text_input("Custo atribuído por ação (R$)", key="b_cost", placeholder="7,82")
+                    c1, c2, _ = st.columns([1, 1, 3])
+                    c1.button("Salvar", type="primary", on_click=on_set_bonus_cost, args=(bonus,))
+                    c2.button(
+                        "Remover",
+                        key="b_delete",
+                        disabled=bonus["unit_cost"] is None,
+                        on_click=on_delete_bonus_cost,
+                        args=(bonus,),
+                    )
 
         with st.expander("Apagar uma operação"):
             options = {operation_label(o): o["id"] for o in shown}

@@ -34,6 +34,7 @@ from investtrack.models import OperationRecord
 from investtrack.portfolio import InsufficientPositionError, Operation, value_position
 from investtrack.prices import CachedPriceProvider, PriceProvider
 from investtrack.schemas import (
+    BonusCostIn,
     ErrorOut,
     IncomeCreate,
     IncomeOut,
@@ -168,7 +169,7 @@ def create_app(
     app = FastAPI(
         title="InvestTrack API",
         description="Portfolio tracker for the Brazilian stock market (B3).",
-        version="0.2.1",
+        version="0.2.2",
         lifespan=lifespan,
     )
 
@@ -236,6 +237,7 @@ def create_app(
     @app.get("/stock-events", tags=["operations"])
     def list_stock_events(session: SessionDep, events: EventsDep) -> list[StockEventOut]:
         """Splits, reverse splits and bonus shares that changed one of your positions."""
+        costs = repository.bonus_costs(session)
         return [
             StockEventOut(
                 ticker=a.event.ticker,
@@ -244,9 +246,34 @@ def create_app(
                 multiplier=a.event.multiplier,
                 quantity_before=a.quantity_before,
                 quantity_after=a.quantity_after,
+                unit_cost=costs.get((a.event.ticker, a.event.record_date)),
             )
             for a in repository.get_applied_stock_events(session, events)
         ]
+
+    @app.put(
+        "/stock-events/{ticker}/{record_date}/unit-cost",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["operations"],
+        responses={404: {"model": ErrorOut, "description": "No bonus event on that date"}},
+    )
+    def set_bonus_cost(
+        ticker: str, record_date: date, payload: BonusCostIn, session: SessionDep, events: EventsDep
+    ) -> None:
+        """Attributed cost (custo atribuído) of bonus shares, from the company's notice."""
+        try:
+            repository.set_bonus_cost(session, ticker, record_date, payload.unit_cost, events)
+        except repository.StockEventNotFoundError as e:
+            raise api_error(404, "STOCK_EVENT_NOT_FOUND", e) from e
+
+    @app.delete(
+        "/stock-events/{ticker}/{record_date}/unit-cost",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["operations"],
+    )
+    def delete_bonus_cost(ticker: str, record_date: date, session: SessionDep) -> None:
+        """Back to zero cost."""
+        repository.delete_bonus_cost(session, ticker, record_date)
 
     @app.post(
         "/income",

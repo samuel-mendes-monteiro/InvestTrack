@@ -153,3 +153,18 @@ class EventSync(Base):
 
     ticker: Mapped[str] = mapped_column(String(12), primary_key=True)
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BonusCost(Base):
+    """Attributed cost (custo atribuído) of the shares of one bonus event.
+
+    Typed by the user: the company discloses it in its notice to
+    shareholders, but B3 doesn't publish it in the data used here. Kept
+    apart from stock_events because a sync replaces those rows.
+    """
+
+    __tablename__ = "bonus_costs"
+
+    ticker: Mapped[str] = mapped_column(String(12), primary_key=True)
+    record_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    unit_cost: Mapped[Decimal] = mapped_column(SafeDecimal)

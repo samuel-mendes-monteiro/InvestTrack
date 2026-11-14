@@ -86,7 +86,7 @@ new_avg = total_cost / (qty × multiplier)
 
 - Splits and reverse splits **don't change the total cost**: 100 shares at R$ 30 become 200 at R$ 15.
 - Fractions are dropped, because B3 sells them in an auction and pays the holder in cash. Their share of the cost leaves with them, so the average price is the same as without rounding. The auction cash is not tracked.
-- Bonus shares enter with **zero cost** for now: the tax rules give them the cost attributed by the company (*custo atribuído*), which B3 doesn't publish in the data used here.
+- Bonus shares enter with the **cost attributed by the company** (*custo atribuído*), which raises the total cost. B3 doesn't publish this value in its data (it is only in each company's notice to shareholders), so it is typed once per bonus event; until then the new shares count at zero cost and the UI warns about it.
 
 **Income (*proventos*)** is computed, never typed, just like positions:
 
@@ -125,7 +125,7 @@ net   = gross − tax withheld   (15% on JCP; dividends and FII distributions: n
 pytest --cov
 ```
 
-219 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
+230 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
 
 The calculation tests include the worked example used to design the rules:
 
@@ -184,6 +184,8 @@ streamlit run frontend/app.py
 | `POST` | `/income` | Record income manually (422 if the ticker wasn't bought by then) |
 | `DELETE` | `/income/{id}` | Delete a manual income |
 | `GET` | `/stock-events` | Splits, reverse splits and bonus shares that changed one of your positions |
+| `PUT` | `/stock-events/{ticker}/{date}/unit-cost` | Attributed cost of a bonus event (404 if there is no bonus on that date) |
+| `DELETE` | `/stock-events/{ticker}/{date}/unit-cost` | Back to zero cost |
 | `GET` | `/portfolio` | Positions, live prices, income received and portfolio totals |
 | `GET` | `/health` | Health check |
 
@@ -206,7 +208,7 @@ streamlit run frontend/app.py
 - [x] CI with GitHub Actions
 - [x] **v0.2:** dividends, JCP and REIT (FII) income
 - [x] Stock splits, reverse splits and bonus shares
-- [ ] Attributed cost of bonus shares (*custo atribuído*)
+- [x] Attributed cost of bonus shares (*custo atribuído*)
 - [ ] **v0.3:** historical performance with time-weighted return (TWR), compared with CDI and Ibovespa
 - [ ] **v0.4:** fixed income (CDB, LCI, LCA)
 - [ ] **v0.5:** login and multiple users

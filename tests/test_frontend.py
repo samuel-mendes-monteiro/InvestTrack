@@ -196,3 +196,19 @@ def test_stock_events_request():
     client, session = client_with(fake_response(200, "[]"))
     assert client.stock_events() == []
     session.request.assert_called_once_with("GET", "http://api.test/stock-events", timeout=15.0)
+
+
+def test_set_bonus_cost_request():
+    client, session = client_with(fake_response(204))
+    client.set_bonus_cost("ITSA4", "2025-12-18", "1.23")
+    session.request.assert_called_once_with(
+        "PUT",
+        "http://api.test/stock-events/ITSA4/2025-12-18/unit-cost",
+        timeout=15.0,
+        json={"unit_cost": "1.23"},
+    )
+
+
+def test_missing_bonus_is_translated():
+    body = '{"detail": {"code": "STOCK_EVENT_NOT_FOUND", "message": "...", "ticker": "ITSA4"}}'
+    assert api_error_for(404, body) == "Não há bonificação desse ativo nessa data."

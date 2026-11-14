@@ -455,5 +455,75 @@ def test_list_applied_stock_events(split_client):
             "multiplier": "2",
             "quantity_before": "100",
             "quantity_after": "200",
+            "unit_cost": None,
         }
     ]
+
+
+# --- attributed cost of bonus shares -----------------------------------------
+
+
+@pytest.fixture
+def bonus_client():
+    """A 10% bonus on 2026-02-01 and a split on 2026-03-01."""
+    bonus = StockEvent("PETR4", StockEventType.BONUS, date(2026, 2, 1), Decimal("1.1"))
+    app = create_app(
+        engine=create_db_engine("sqlite://"),
+        price_provider=PRICES,
+        events=StaticEvents(stock=[bonus, split_event("2026-03-01")]),
+    )
+    with TestClient(app) as c:
+        c.post("/operations", json=op(qty="100", price="30", day="2026-01-05"))
+        yield c
+
+
+COST_URL = "/stock-events/PETR4/2026-02-01/unit-cost"
+
+
+def test_bonus_without_cost_counts_as_zero(bonus_client):
+    petr = bonus_client.get("/portfolio").json()["positions"][0]
+    assert petr["quantity"] == "220"  # 100 -> 110 -> 220
+    assert petr["invested"] == "3000.00"
+    assert bonus_client.get("/stock-events").json()[0]["unit_cost"] is None
+
+
+def test_attributed_cost_raises_the_average_price(bonus_client):
+    assert bonus_client.put(COST_URL, json={"unit_cost": "4"}).status_code == 204
+    petr = bonus_client.get("/portfolio").json()["positions"][0]
+    assert petr["invested"] == "3040.00"  # + 10 bonus shares x R$ 4, then split
+    assert bonus_client.get("/stock-events").json()[0]["unit_cost"] == "4"
+
+
+def test_attributed_cost_can_be_changed_and_removed(bonus_client):
+    bonus_client.put(COST_URL, json={"unit_cost": "4"})
+    bonus_client.put(COST_URL, json={"unit_cost": "5"})
+    assert bonus_client.get("/portfolio").json()["positions"][0]["invested"] == "3050.00"
+
+    assert bonus_client.delete(COST_URL).status_code == 204
+    assert bonus_client.get("/portfolio").json()["positions"][0]["invested"] == "3000.00"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/stock-events/PETR4/2026-02-02/unit-cost",  # wrong date
+        "/stock-events/PETR4/2026-03-01/unit-cost",  # a split, not a bonus
+        "/stock-events/VALE3/2026-02-01/unit-cost",  # not in the portfolio
+    ],
+)
+def test_cost_for_missing_bonus_is_rejected(bonus_client, url):
+    r = bonus_client.put(url, json={"unit_cost": "4"})
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "STOCK_EVENT_NOT_FOUND"
+
+
+def test_negative_cost_is_rejected(bonus_client):
+    assert bonus_client.put(COST_URL, json={"unit_cost": "-1"}).status_code == 422
+
+
+def test_cost_is_used_when_validating_sales(bonus_client):
+    bonus_client.put(COST_URL, json={"unit_cost": "4"})
+    r = bonus_client.post("/operations", json=op("SELL", qty="220", price="20", day="2026-03-02"))
+    assert r.status_code == 201
+    realized = bonus_client.get("/portfolio").json()["totals"]["realized_profit"]
+    assert realized == "1360.00"  # 220 x 20 - 3040

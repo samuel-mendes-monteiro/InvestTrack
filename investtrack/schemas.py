@@ -104,6 +104,13 @@ class StockEventOut(BaseModel):
     multiplier: Decimal = Field(description="Shares after = shares before x multiplier")
     quantity_before: Decimal
     quantity_after: Decimal
+    unit_cost: Decimal | None = Field(
+        description="Attributed cost per bonus share, None if not informed (counts as zero)"
+    )
+
+
+class BonusCostIn(BaseModel):
+    unit_cost: Decimal = Field(ge=0, description="From the company's notice", examples=["7.82"])
 
 
 class OperationOut(BaseModel):

@@ -43,6 +43,13 @@ class ApiClient:
     def stock_events(self) -> list[dict]:
         return self._request("GET", "/stock-events")
 
+    def set_bonus_cost(self, ticker: str, record_date: str, unit_cost: str) -> None:
+        url = f"/stock-events/{ticker}/{record_date}/unit-cost"
+        self._request("PUT", url, json={"unit_cost": unit_cost})
+
+    def delete_bonus_cost(self, ticker: str, record_date: str) -> None:
+        self._request("DELETE", f"/stock-events/{ticker}/{record_date}/unit-cost")
+
     def incomes(self) -> list[dict]:
         return self._request("GET", "/income")
 
@@ -80,6 +87,7 @@ FIELD_NAMES = {
     "income_type": "Tipo de provento",
     "amount": "Valor bruto",
     "tax": "IR retido",
+    "unit_cost": "Custo atribuído",
 }
 
 
@@ -120,6 +128,8 @@ def _domain_error(d: dict) -> str:
                 f"Apagar essa compra deixaria proventos de {d['ticker']} recebidos "
                 "antes de qualquer compra. Apague os proventos primeiro."
             )
+        case "STOCK_EVENT_NOT_FOUND":
+            return "Não há bonificação desse ativo nessa data."
         case "INCOME_NOT_FOUND":
             return "Provento não encontrado. Talvez ele já tenha sido apagado."
         case _:

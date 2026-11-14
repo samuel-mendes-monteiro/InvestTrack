@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from investtrack.db import create_db_engine, init_db
+from investtrack.events import StaticEvents
 from investtrack.income import (
     Income,
     IncomeEvent,
@@ -15,18 +16,27 @@ from investtrack.income import (
     TickerEvents,
 )
 from investtrack.models import Asset, AssetType, OperationRecord
-from investtrack.portfolio import InsufficientPositionError, Operation, OpType
+from investtrack.portfolio import (
+    InsufficientPositionError,
+    Operation,
+    OpType,
+    StockEvent,
+    StockEventType,
+)
 from investtrack.repository import (
     IncomeNotFoundError,
     OperationNotFoundError,
     add_income,
     add_operation,
+    bonus_costs,
     computed_incomes,
+    delete_bonus_cost,
     delete_income,
     delete_operation,
     get_portfolio,
     list_incomes,
     list_operations,
+    set_bonus_cost,
 )
 
 
@@ -251,3 +261,17 @@ def test_computed_incomes_use_each_asset_type(session):
         "PETR4": Decimal("50"),
         "HGLG11": Decimal("11"),
     }
+
+
+def test_bonus_cost_lowercase_ticker_and_delete_missing(session):
+    bonus = StockEvent("PETR4", StockEventType.BONUS, date(2026, 1, 5), Decimal("1.1"))
+    events = StaticEvents(stock=[bonus])
+    add_operation(session, buy(1, "100", "30"), events=events)
+
+    set_bonus_cost(session, "petr4", date(2026, 1, 5), Decimal("7.82"), events)
+    assert bonus_costs(session) == {("PETR4", date(2026, 1, 5)): Decimal("7.82")}
+    assert get_portfolio(session, events)["PETR4"].avg_price == Decimal("3078.2") / 110
+
+    delete_bonus_cost(session, "PETR4", date(2026, 1, 6))  # nothing there: no error
+    delete_bonus_cost(session, "PETR4", date(2026, 1, 5))
+    assert bonus_costs(session) == {}
