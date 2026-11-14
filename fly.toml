@@ -1,7 +1,7 @@
 # Fly.io: one machine in São Paulo running the Docker image, with the SQLite
 # database on a persistent volume. App names are global on Fly: change `app`
 # if this one is taken.
-app = "investtrack"
+app = "investtrack-br"
 primary_region = "gru"
 
 [build]
