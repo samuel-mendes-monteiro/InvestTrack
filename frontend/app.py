@@ -38,7 +38,7 @@ SKIP_REASONS = {
     "UNREADABLE_ROW": "linha ilegível",
 }
 FI_PRODUCTS = ["CDB", "LCI", "LCA"]
-FI_INDEXERS = {"% do CDI": "CDI", "Prefixado": "PRE"}
+FI_INDEXERS = {"% do CDI": "CDI", "Prefixado": "PRE", "IPCA+": "IPCA"}
 FI_STATUS = {"ACTIVE": "Aplicado", "REDEEMED": "Resgatado", "MATURED": "Vencido"}
 STOCK_EVENT_LABELS = {
     "SPLIT": "Desdobramento",
@@ -262,9 +262,15 @@ def on_delete_bonus_cost(bonus: dict) -> None:
 
 
 def fi_rate(f: dict) -> str:
-    """'110% do CDI' or '12,5% a.a.'"""
+    """'110% do CDI', '12,5% a.a.' or 'IPCA + 6,5% a.a.'"""
     rate = quantity(f["rate"])
-    return f"{rate}% do CDI" if f["indexer"] == "CDI" else f"{rate}% a.a."
+    match f["indexer"]:
+        case "CDI":
+            return f"{rate}% do CDI"
+        case "IPCA":
+            return f"IPCA + {rate}% a.a."
+        case _:
+            return f"{rate}% a.a."
 
 
 def fi_label(f: dict) -> str:
@@ -828,7 +834,10 @@ elif view == "Renda fixa":
                 "Taxa (%)",
                 key="fi_rate",
                 placeholder="110",
-                help="% do CDI (ex.: 110) ou taxa ao ano, se prefixado (ex.: 12,5).",
+                help=(
+                    "% do CDI (ex.: 110), taxa ao ano se prefixado (ex.: 12,5), "
+                    "ou taxa ao ano acima da inflação se IPCA+ (ex.: 6,5)."
+                ),
             )
             c3.date_input(
                 "Data da aplicação",
@@ -850,6 +859,11 @@ elif view == "Renda fixa":
         st.info("Nenhuma aplicação de renda fixa registrada.")
     else:
         active = [f for f in investments if f["status"] == "ACTIVE"]
+        if any(f["estimated"] for f in active):
+            st.caption(
+                "IPCA+: o IPCA do mês só sai por volta do dia 10 do mês seguinte. Até lá, "
+                "o valor usa o último IPCA publicado e é uma estimativa."
+            )
         if any(f["as_of"] is None for f in investments):
             st.info("Aguardando o histórico do CDI. Atualize a página em instantes.", icon="⏳")
 

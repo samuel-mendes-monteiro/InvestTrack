@@ -47,6 +47,7 @@ def market(engine, cotahist, today=TODAY):
         cotahist=cotahist,
         fetch_ibovespa=Mock(return_value=[(date(2026, 9, 30), Decimal("170000"))]),
         fetch_cdi_rates=Mock(return_value=[(date(2026, 10, 1), Decimal("0.05"))]),
+        fetch_ipca_rates=Mock(return_value=[(date(2026, 10, 1), Decimal("0.14"))]),
         clock=lambda: noon,
     )
 
@@ -59,6 +60,7 @@ def test_closed_months_by_file_current_month_by_day(engine):
         *[f"COTAHIST:D{d:02d}112026" for d in november],
         "IBOV:2026",
         "CDI",
+        "IPCA",
     ]
 
 
@@ -116,7 +118,7 @@ def test_benchmarks_of_the_current_year_are_refreshed_daily(engine):
     m.sync(date(2026, 11, 12))
     assert m.is_synced(date(2026, 11, 12))
     tomorrow = market(engine, fake_cotahist(), today=date(2026, 11, 15))
-    assert tomorrow.missing(date(2026, 11, 12)) == ["IBOV:2026", "CDI"]
+    assert tomorrow.missing(date(2026, 11, 12)) == ["IBOV:2026", "CDI", "IPCA"]
 
 
 def test_failed_download_is_retried_later(engine):
@@ -143,3 +145,10 @@ def test_cdi_is_fetched_again_when_the_start_moves_back(engine):
     m.sync(date(2026, 10, 1))  # the fake CDI starts on Oct 1
     assert "CDI" not in m.missing(date(2026, 10, 1))
     assert "CDI" in m.missing(date(2025, 6, 2))  # loaded today, but not that far back
+
+
+def test_ipca_is_downloaded_whole_and_stored(engine):
+    m = market(engine, fake_cotahist())
+    m.sync(date(2026, 11, 12))
+    m._fetch_ipca.assert_called_once_with(date(2000, 1, 1), TODAY)
+    assert m.series("IPCA", date(2026, 1, 1)) == {date(2026, 10, 1): Decimal("0.14")}

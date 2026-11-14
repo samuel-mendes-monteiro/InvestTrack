@@ -15,6 +15,7 @@ from investtrack.fixed_income import (
     gross_values,
     iof_rate,
     ir_rate,
+    is_estimated,
     partial_valuations,
     taxes,
     value_on,
@@ -202,3 +203,45 @@ def test_partial_redemption_is_money_out_and_twr_ignores_it():
     assert flows[DAYS[1]] == Decimal("-505")
     history = portfolio_history([], DAYS[:3], {}, other_values=values, other_flows=flows)
     assert history[-1].twr == Decimal("1.01") ** 2 - 1  # same as without withdrawing
+
+
+# --- IPCA+ -------------------------------------------------------------------
+
+
+def ipca_plus(rate="6", **kw):
+    kw.setdefault("start", date(2026, 3, 1))
+    return cdb(rate=rate, indexer=Indexer.IPCA, **kw)
+
+
+MARCH_1PCT = {date(2026, 3, 1): Decimal("1")}
+
+
+def test_ipca_plus_is_inflation_times_the_real_rate():
+    days = [date(2026, 3, 1), date(2026, 4, 1)]  # one business day apart, for the math
+    values = gross_values(ipca_plus(), days, {}, MARCH_1PCT)
+    expected = Decimal("1000") * Decimal("1.06") ** (Decimal(1) / 252) * Decimal("1.01")
+    assert values[days[1]] == expected
+
+
+def test_ipca_is_spread_over_the_calendar_days_of_its_month():
+    days = [date(2026, 4, 1), date(2026, 4, 16)]  # 15 of April's 30 days
+    april = {date(2026, 4, 1): Decimal("1")}
+    values = gross_values(ipca_plus(start=days[0]), days, {}, april)
+    real = Decimal("1.06") ** (Decimal(1) / 252)
+    assert values[days[1]] == Decimal("1000") * real * Decimal("1.01") ** Decimal("0.5")
+
+
+def test_unpublished_month_repeats_the_last_one_and_is_an_estimate():
+    investment = ipca_plus()
+    days = [date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)]
+    values = gross_values(investment, days, {}, MARCH_1PCT)
+    inflation = values[days[2]] / (Decimal("1000") * Decimal("1.06") ** (Decimal(2) / 252))
+    assert round(inflation, 20) == round(Decimal("1.01") ** 2, 20)  # April assumed 1% too
+    assert not is_estimated(investment, days[1], MARCH_1PCT)  # March is published
+    assert is_estimated(investment, days[2], MARCH_1PCT)  # April isn't
+    assert not is_estimated(cdb(), days[2], MARCH_1PCT)
+
+
+def test_ipca_plus_without_any_ipca_has_only_the_first_day():
+    values = gross_values(ipca_plus(), [date(2026, 3, 1), date(2026, 3, 2)], {}, {})
+    assert list(values) == [date(2026, 3, 1)]

@@ -1,4 +1,4 @@
-"""Historical market data kept in the database: prices, Ibovespa and CDI.
+"""Historical market data kept in the database: prices, Ibovespa, CDI and IPCA.
 
 The first download for a year of trades is about 100 MB (one COTAHIST file
 per month), so it must not run inside an HTTP request: the API starts it
@@ -11,7 +11,7 @@ first trade until yesterday) with the periods recorded in history_loads:
 - the current month: one daily file per weekday (today's is only published
   in the evening, so the history goes until yesterday);
 - a weekday without a file is a holiday, recorded so it isn't asked again;
-- Ibovespa and CDI of the current year are refreshed once a day.
+- Ibovespa, CDI and IPCA are refreshed once a day.
 """
 
 import logging
@@ -31,12 +31,16 @@ from investtrack.history import (
     NotPublishedError,
     fetch_cdi,
     fetch_ibovespa_year,
+    fetch_ipca,
 )
 from investtrack.models import BenchmarkValue, DailyPrice, HistoryLoad
 
 log = logging.getLogger(__name__)
 
-IBOV, CDI = "IBOV", "CDI"
+IBOV, CDI, IPCA = "IBOV", "CDI", "IPCA"
+# The whole IPCA series since the Real stabilised is ~350 numbers: always
+# downloading all of it is simpler than tracking which months are missing.
+IPCA_SINCE = date(2000, 1, 1)
 
 
 class MarketDataSource(Protocol):
@@ -80,12 +84,14 @@ class MarketData:
         cotahist: CotahistClient | None = None,
         fetch_ibovespa: Callable[[int], list[tuple[date, Decimal]]] = fetch_ibovespa_year,
         fetch_cdi_rates: Callable[[date, date], list[tuple[date, Decimal]]] = fetch_cdi,
+        fetch_ipca_rates: Callable[[date, date], list[tuple[date, Decimal]]] = fetch_ipca,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ):
         self._engine = engine
         self._cotahist = cotahist or CotahistClient()
         self._fetch_ibovespa = fetch_ibovespa
         self._fetch_cdi = fetch_cdi_rates
+        self._fetch_ipca = fetch_ipca_rates
         # One clock for "today" and for load timestamps, so tests control both.
         self._clock = clock
         self._lock = threading.Lock()
@@ -135,6 +141,9 @@ class MarketData:
         covers_start = cdi_from is not None and cdi_from <= start + timedelta(days=7)
         if CDI not in loaded or _day(loaded[CDI]) != today or not covers_start:
             missing.append(CDI)
+        # IPCA comes out once a month, but checking daily costs one tiny request.
+        if IPCA not in loaded or _day(loaded[IPCA]) != today:
+            missing.append(IPCA)
         return missing
 
     def missing(self, start: date) -> list[str]:
@@ -192,6 +201,8 @@ class MarketData:
             self._save_series(IBOV, self._fetch_ibovespa(year), period)
         elif kind == CDI:
             self._save_series(CDI, self._fetch_cdi(start, self._today()), period)
+        elif kind == IPCA:
+            self._save_series(IPCA, self._fetch_ipca(IPCA_SINCE, self._today()), period)
 
     def _save_prices(self, rows, first: date, last: date, period: str) -> None:
         with Session(self._engine) as session:

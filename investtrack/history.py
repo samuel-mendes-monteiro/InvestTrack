@@ -1,12 +1,13 @@
-"""Clients for historical market data: daily prices, Ibovespa and CDI.
+"""Clients for historical market data: daily prices, Ibovespa, CDI and IPCA.
 
-All three sources are free and official, and none needs a token:
+All these sources are free and official, and none needs a token:
 - Prices: B3's COTAHIST files, the official historical series. Unlike
   brapi's history (limited to 3 months on the free plan), they cover any
   period. They are also unadjusted: splits and dividends are applied by
   this project itself, so adjusted prices would count them twice.
 - Ibovespa: the daily closes B3 shows on its index page.
 - CDI: the Central Bank's SGS series 12 (daily rate, % per day).
+- IPCA: SGS series 433 (monthly inflation, %), dated the 1st of each month.
 
 Only this module knows these URLs and formats.
 """
@@ -26,6 +27,7 @@ IBOV_URL = (
     "https://sistemaswebb3-listados.b3.com.br/indexStatisticsProxy/IndexCall/GetPortfolioDay/"
 )
 CDI_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados"
+IPCA_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados"
 
 SPOT_MARKET = "010"  # mercado à vista, lote padrão
 
@@ -127,29 +129,44 @@ def fetch_ibovespa_year(
         raise HistoryUnavailableError(f"Ibovespa {year}: {e}") from e
 
 
-# --- CDI ---------------------------------------------------------------------
+# --- Central Bank series (CDI, IPCA) ------------------------------------------
 
 
 def parse_cdi(payload: list) -> list[tuple[date, Decimal]]:
-    """[{"data": "02/01/2026", "valor": "0.055131"}] -> daily rates in % per day."""
+    """[{"data": "02/01/2026", "valor": "0.055131"}] -> (day, value) pairs.
+
+    Every SGS series has this format: CDI in % per day, IPCA in % per month.
+    """
     try:
         return [
             (datetime.strptime(item["data"], "%d/%m/%Y").date(), Decimal(item["valor"]))
             for item in payload
         ]
     except (KeyError, TypeError, ValueError, InvalidOperation) as e:
-        raise HistoryUnavailableError(f"unexpected CDI format: {e}") from e
+        raise HistoryUnavailableError(f"unexpected SGS format: {e}") from e
 
 
-def fetch_cdi(
-    start: date, end: date, session: requests.Session | None = None, timeout: float = 30.0
+def _fetch_sgs(
+    name: str, url: str, start: date, end: date, session: requests.Session | None, timeout: float
 ) -> list[tuple[date, Decimal]]:
     params = {"formato": "json", "dataInicial": f"{start:%d/%m/%Y}", "dataFinal": f"{end:%d/%m/%Y}"}
     try:
-        response = (session or requests).get(CDI_URL, params=params, timeout=timeout)
+        response = (session or requests).get(url, params=params, timeout=timeout)
         if response.status_code == 404:  # the Central Bank answers 404 for "no data"
             return []
         response.raise_for_status()
         return parse_cdi(response.json())
     except (requests.RequestException, ValueError) as e:
-        raise HistoryUnavailableError(f"CDI: {e}") from e
+        raise HistoryUnavailableError(f"{name}: {e}") from e
+
+
+def fetch_cdi(
+    start: date, end: date, session: requests.Session | None = None, timeout: float = 30.0
+) -> list[tuple[date, Decimal]]:
+    return _fetch_sgs("CDI", CDI_URL, start, end, session, timeout)
+
+
+def fetch_ipca(
+    start: date, end: date, session: requests.Session | None = None, timeout: float = 30.0
+) -> list[tuple[date, Decimal]]:
+    return _fetch_sgs("IPCA", IPCA_URL, start, end, session, timeout)

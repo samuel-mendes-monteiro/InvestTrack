@@ -489,6 +489,7 @@ def add_partial_redemption(
     redemption: PartialRedemption,
     business_days: list[date],
     cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None = None,
 ) -> FixedIncomeRecord:
     """Withdraw part of an investment, if there is that much on that day.
 
@@ -500,7 +501,7 @@ def add_partial_redemption(
     record = get_fixed_income(session, user_id, investment_id)
     current = fixed_income_to_domain(record)
     candidate = replace(current, partial=current.partial + (redemption,))  # validates dates
-    values = gross_values(candidate, business_days, cdi)  # raises if too large
+    values = gross_values(candidate, business_days, cdi, ipca)  # raises if too large
     if redemption.day not in values:
         raise ValueNotKnownError(redemption.day)
     record.partial_redemptions.append(

@@ -6,6 +6,13 @@ Unlike shares, these have no market price: the value comes from a formula.
 - Post-fixed (% of CDI): each business day the investment earns that day's
   CDI times the percentage:  value = amount x prod(1 + CDI_day x pct)
 - Pre-fixed (annual rate):  value = amount x (1 + rate) ^ (business days / 252)
+- IPCA+ (real annual rate): the pre-fixed formula times the inflation since
+  the start. Each month's IPCA is spread over its calendar days, so the
+  value grows a little every day instead of jumping once a month. The IPCA
+  of a month only comes out around the 10th of the next one: until then,
+  the last published month is repeated, and the value is an estimate.
+  (Banks and the Tesouro use an anniversary date and business days instead;
+  over whole months the result is the same, within a month it differs a little.)
 
 Business days come from the CDI series itself: the Central Bank publishes
 a rate only on business days, so it is the official calendar for free.
@@ -23,9 +30,10 @@ Taxes on redemption (CDB only; LCI and LCA are exempt for individuals):
 - income tax on the gain minus IOF, by calendar days held (Lei 11.033/2004).
 """
 
+import calendar
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
@@ -41,6 +49,7 @@ class Product(StrEnum):
 class Indexer(StrEnum):
     CDI = "CDI"  # rate is a percentage of the CDI, e.g. 110
     PRE = "PRE"  # rate is a fixed annual percentage, e.g. 12.5
+    IPCA = "IPCA"  # rate is the annual percentage above inflation, e.g. 6.5
 
 
 TAX_EXEMPT = {Product.LCI, Product.LCA}
@@ -156,6 +165,41 @@ class Valuation:
         return (self.gross / self.principal - 1) * 100
 
 
+def _month(day: date) -> date:
+    return day.replace(day=1)
+
+
+def _ipca_growth(start: date, end: date, ipca: dict[date, Decimal]) -> Decimal | None:
+    """Inflation factor from the start of `start` to the start of `end`.
+
+    Each calendar day earns its month's IPCA ^ (1 / days in the month). A
+    month not published yet uses the last one before it; None if there is
+    none at all.
+    """
+    growth = ONE
+    day = start
+    while day < end:
+        month = _month(day)
+        known = [m for m in ipca if m <= month]
+        if not known:
+            return None
+        rate = ipca[max(known)]
+        days_in_month = calendar.monthrange(day.year, day.month)[1]
+        next_month = (month + timedelta(days=days_in_month)).replace(day=1)
+        days = (min(end, next_month) - day).days
+        growth *= (1 + rate / 100) ** (Decimal(days) / days_in_month)
+        day = min(end, next_month)
+    return growth
+
+
+def is_estimated(investment: FixedIncome, day: date, ipca: dict[date, Decimal]) -> bool:
+    """True if the value on `day` uses an IPCA not published yet."""
+    if investment.indexer is not Indexer.IPCA or day <= investment.start:
+        return False
+    last_accrued = _month(day - timedelta(days=1))
+    return not ipca or max(ipca) < last_accrued
+
+
 @dataclass(frozen=True)
 class DayValue:
     gross: Decimal  # value left after that day's withdrawals
@@ -163,7 +207,10 @@ class DayValue:
 
 
 def _trajectory(
-    investment: FixedIncome, business_days: list[date], cdi: dict[date, Decimal]
+    investment: FixedIncome,
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None = None,
 ) -> dict[date, DayValue]:
     """Value at the close of each business day while invested.
 
@@ -183,6 +230,7 @@ def _trajectory(
     values: dict[date, DayValue] = {}
     whole = investment.amount
     share = ONE
+    inflation = ONE  # IPCA since the start, for IPCA+
     elapsed = 0
     previous: date | None = None
     for day in days:
@@ -194,6 +242,12 @@ def _trajectory(
             else:
                 elapsed += 1
                 whole = investment.amount * (1 + pct) ** (Decimal(elapsed) / 252)
+                if investment.indexer is Indexer.IPCA:
+                    growth = _ipca_growth(previous, day, ipca or {})
+                    if growth is None:
+                        break
+                    inflation *= growth
+                    whole *= inflation
         if day in withdrawn:
             before = whole * share
             if withdrawn[day] >= before:
@@ -205,10 +259,13 @@ def _trajectory(
 
 
 def gross_values(
-    investment: FixedIncome, business_days: list[date], cdi: dict[date, Decimal]
+    investment: FixedIncome,
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None = None,
 ) -> dict[date, Decimal]:
     """Gross value at the close of each business day while invested."""
-    return {d: v.gross for d, v in _trajectory(investment, business_days, cdi).items()}
+    return {d: v.gross for d, v in _trajectory(investment, business_days, cdi, ipca).items()}
 
 
 def _taxes(product: Product, start: date, day: date, gross: Decimal, principal: Decimal):
@@ -232,10 +289,14 @@ def taxes(investment: FixedIncome, day: date, gross: Decimal, share: Decimal = O
 
 
 def value_on(
-    investment: FixedIncome, day: date, business_days: list[date], cdi: dict[date, Decimal]
+    investment: FixedIncome,
+    day: date,
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None = None,
 ) -> Valuation | None:
     """Value on `day` (or the last day with data before it), with taxes."""
-    values = _trajectory(investment, business_days, cdi)
+    values = _trajectory(investment, business_days, cdi, ipca)
     known = [d for d in values if d <= day]
     if not known:
         return None
@@ -244,7 +305,10 @@ def value_on(
 
 
 def partial_valuations(
-    investment: FixedIncome, business_days: list[date], cdi: dict[date, Decimal]
+    investment: FixedIncome,
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None = None,
 ) -> list[Valuation | None]:
     """Taxes on each partial redemption, in the order of investment.partial.
 
@@ -252,7 +316,7 @@ def partial_valuations(
     from 1.0 to 0.75 held is a quarter of the money invested. None for a
     redemption whose day has no data yet.
     """
-    values = _trajectory(investment, business_days, cdi)
+    values = _trajectory(investment, business_days, cdi, ipca)
     days = sorted(values)
     result: list[Valuation | None] = []
     for p in investment.partial:
@@ -270,7 +334,10 @@ def partial_valuations(
 
 
 def daily_series(
-    investments: list[FixedIncome], business_days: list[date], cdi: dict[date, Decimal]
+    investments: list[FixedIncome],
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None = None,
 ) -> tuple[dict[date, Decimal], dict[date, Decimal]]:
     """Values and flows of all investments, ready to join the TWR.
 
@@ -284,7 +351,7 @@ def daily_series(
     flows: dict[date, Decimal] = defaultdict(lambda: ZERO)
     last_known = max(business_days, default=None)
     for investment in investments:
-        gross = gross_values(investment, business_days, cdi)
+        gross = gross_values(investment, business_days, cdi, ipca)
         if not gross:
             continue
         flows[min(gross)] += investment.amount

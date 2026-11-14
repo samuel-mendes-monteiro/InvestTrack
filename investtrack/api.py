@@ -39,6 +39,7 @@ from investtrack.fixed_income import (
     PartialRedemption,
     RedemptionTooLargeError,
     daily_series,
+    is_estimated,
     partial_valuations,
     value_on,
 )
@@ -48,7 +49,7 @@ from investtrack.income import (
     monthly_income,
     net_income_by_ticker,
 )
-from investtrack.market_data import CDI, IBOV, MarketData, MarketDataSource
+from investtrack.market_data import CDI, IBOV, IPCA, IPCA_SINCE, MarketData, MarketDataSource
 from investtrack.models import OperationRecord, User
 from investtrack.performance import cdi_accumulated, index_return, portfolio_history
 from investtrack.portfolio import InsufficientPositionError, Operation, value_position
@@ -214,8 +215,8 @@ def all_incomes(
     return sorted(manual + computed, key=lambda pair: (pair[1].date, pair[1].ticker))
 
 
-def business_days(market: MarketDataSource, start: date) -> tuple[list[date], dict]:
-    """Business days until the last close, and the CDI rates since `start`.
+def business_days(market: MarketDataSource, start: date) -> tuple[list[date], dict, dict]:
+    """Business days until the last close, and the CDI and IPCA since `start`.
 
     The CDI has a rate only on business days, but is published a day late;
     the Ibovespa adds the last trading day, whose value needs only the rates
@@ -224,11 +225,14 @@ def business_days(market: MarketDataSource, start: date) -> tuple[list[date], di
     cdi = market.series(CDI, start)
     ibov = market.series(IBOV, start)
     days = sorted(d for d in set(cdi) | set(ibov) if d <= market.last_day())
-    return days, cdi
+    # All of it (a few hundred numbers): when the start month isn't published
+    # yet, its estimate comes from a month before the start.
+    ipca = market.series(IPCA, IPCA_SINCE)
+    return days, cdi, ipca
 
 
 def fixed_income_to_out(
-    record, investment: FixedIncome, days: list[date], cdi: dict
+    record, investment: FixedIncome, days: list[date], cdi: dict, ipca: dict
 ) -> FixedIncomeOut:
     last_day = days[-1] if days else None
     if investment.redeemed_on:
@@ -237,7 +241,7 @@ def fixed_income_to_out(
         status = "MATURED"
     else:
         status = "ACTIVE"
-    valuation = value_on(investment, investment.end, days, cdi) if days else None
+    valuation = value_on(investment, investment.end, days, cdi, ipca) if days else None
     withdrawals = [
         PartialRedemptionOut(
             id=r.id,
@@ -250,7 +254,7 @@ def fixed_income_to_out(
         # Both lists are sorted by date: the record's by its order_by, the
         # domain's in FixedIncome itself (same-day ties keep the record order).
         for r, v in zip(
-            record.partial_redemptions, partial_valuations(investment, days, cdi), strict=True
+            record.partial_redemptions, partial_valuations(investment, days, cdi, ipca), strict=True
         )
     ]
     return FixedIncomeOut(
@@ -267,6 +271,7 @@ def fixed_income_to_out(
         principal=valuation.principal if valuation else investment.amount,
         status=status,
         as_of=valuation.day if valuation else None,
+        estimated=is_estimated(investment, valuation.day, ipca) if valuation else False,
         gross=valuation.gross if valuation else None,
         iof=valuation.iof if valuation else None,
         ir=valuation.ir if valuation else None,
@@ -695,9 +700,10 @@ def create_app(
         start = min(r.start for r in records)
         if not market.syncing and not market.is_synced(start):
             background.add_task(market.sync, start)
-        days, cdi = business_days(market, start)
+        days, cdi, ipca = business_days(market, start)
         return [
-            fixed_income_to_out(r, repository.fixed_income_to_domain(r), days, cdi) for r in records
+            fixed_income_to_out(r, repository.fixed_income_to_domain(r), days, cdi, ipca)
+            for r in records
         ]
 
     @app.post(
@@ -720,8 +726,8 @@ def create_app(
         record = repository.add_fixed_income(session, user.id, investment)
         if not market.syncing and not market.is_synced(investment.start):
             background.add_task(market.sync, investment.start)
-        days, cdi = business_days(market, investment.start)
-        return fixed_income_to_out(record, investment, days, cdi)
+        days, cdi, ipca = business_days(market, investment.start)
+        return fixed_income_to_out(record, investment, days, cdi, ipca)
 
     @app.get("/fixed-income", tags=["fixed income"])
     def get_fixed_income(
@@ -750,8 +756,10 @@ def create_app(
             raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
         except ValueError as e:
             raise api_error(422, "INVALID_FIXED_INCOME", e) from e
-        days, cdi = business_days(market, record.start)
-        return fixed_income_to_out(record, repository.fixed_income_to_domain(record), days, cdi)
+        days, cdi, ipca = business_days(market, record.start)
+        return fixed_income_to_out(
+            record, repository.fixed_income_to_domain(record), days, cdi, ipca
+        )
 
     @app.post(
         "/fixed-income/{investment_id}/partial-redemptions",
@@ -776,9 +784,9 @@ def create_app(
         try:
             redemption = PartialRedemption(payload.date, payload.gross)
             record = repository.get_fixed_income(session, user.id, investment_id)
-            days, cdi = business_days(market, record.start)
+            days, cdi, ipca = business_days(market, record.start)
             record = repository.add_partial_redemption(
-                session, user.id, investment_id, redemption, days, cdi
+                session, user.id, investment_id, redemption, days, cdi, ipca
             )
         except repository.FixedIncomeNotFoundError as e:
             raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
@@ -790,7 +798,9 @@ def create_app(
             raise api_error(422, "VALUE_NOT_KNOWN", e) from e
         except ValueError as e:
             raise api_error(422, "INVALID_PARTIAL_REDEMPTION", e) from e
-        return fixed_income_to_out(record, repository.fixed_income_to_domain(record), days, cdi)
+        return fixed_income_to_out(
+            record, repository.fixed_income_to_domain(record), days, cdi, ipca
+        )
 
     @app.delete(
         "/fixed-income/{investment_id}/partial-redemptions/{redemption_id}",
@@ -812,8 +822,10 @@ def create_app(
             raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
         except repository.PartialRedemptionNotFoundError as e:
             raise api_error(404, "PARTIAL_REDEMPTION_NOT_FOUND", e) from e
-        days, cdi = business_days(market, record.start)
-        return fixed_income_to_out(record, repository.fixed_income_to_domain(record), days, cdi)
+        days, cdi, ipca = business_days(market, record.start)
+        return fixed_income_to_out(
+            record, repository.fixed_income_to_domain(record), days, cdi, ipca
+        )
 
     @app.delete(
         "/fixed-income/{investment_id}",

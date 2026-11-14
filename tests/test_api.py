@@ -689,6 +689,7 @@ def test_create_fixed_income_and_value_it(fi_client):
     assert body["gross"] == "1020.10"  # 1000 x 1.01 x 1.01
     assert body["net"] == "1020.10"  # LCI: no tax
     assert body["gross_return"] == "2.01"
+    assert body["estimated"] is False
 
 
 def test_cdb_shows_taxes(fi_client):
@@ -738,6 +739,23 @@ def test_delete_fixed_income(fi_client):
     assert fi_client.delete(f"/fixed-income/{created['id']}").status_code == 204
     assert fi_client.get("/fixed-income").json() == []
     assert fi_client.delete(f"/fixed-income/{created['id']}").status_code == 404
+
+
+def test_ipca_plus_is_valued_and_flagged_as_estimate():
+    market = StaticMarketData(
+        series={
+            "CDI": {MON: Decimal("1"), TUE: Decimal("1")},
+            "IBOV": {MON: Decimal("100"), TUE: Decimal("100"), WED: Decimal("100")},
+            "IPCA": {date(2026, 2, 1): Decimal("1")},  # March not published yet
+        },
+        last_day=WED,
+    )
+    with performance_client(market) as c:
+        body = c.post("/fixed-income", json=fixed(indexer="IPCA", rate="6")).json()
+        assert body["indexer"] == "IPCA"
+        assert body["as_of"] == WED.isoformat()
+        assert body["estimated"] is True
+        assert Decimal(body["gross"]) > 1000
 
 
 def test_partial_redemption(fi_client):

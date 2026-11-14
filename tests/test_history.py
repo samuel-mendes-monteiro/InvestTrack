@@ -17,6 +17,7 @@ from investtrack.history import (
     NotPublishedError,
     fetch_cdi,
     fetch_ibovespa_year,
+    fetch_ipca,
     parse_cdi,
     parse_cotahist,
     parse_ibovespa_year,
@@ -153,3 +154,14 @@ def test_fetch_cdi_sends_brazilian_dates():
     ]
     params = session.get.call_args.kwargs["params"]
     assert (params["dataInicial"], params["dataFinal"]) == ("01/01/2026", "31/01/2026")
+
+
+def test_fetch_ipca_reads_the_monthly_series():
+    session = Mock()
+    session.get.return_value = Mock(
+        status_code=200, json=lambda: [{"data": "01/10/2026", "valor": "0.14"}]
+    )
+    assert fetch_ipca(date(2026, 1, 1), date(2026, 11, 14), session=session) == [
+        (date(2026, 10, 1), Decimal("0.14"))
+    ]
+    assert "sgs.433" in session.get.call_args.args[0]

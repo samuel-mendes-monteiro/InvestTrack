@@ -176,7 +176,11 @@ class FixedIncomeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100, examples=["CDB Banco X"])
     product: Product
     indexer: Indexer
-    rate: Decimal = Field(gt=0, description="% of CDI (110) or % per year (12.5)", examples=["110"])
+    rate: Decimal = Field(
+        gt=0,
+        description="% of CDI (110), % per year (12.5), or % per year above IPCA (6.5)",
+        examples=["110"],
+    )
     start: PastDate
     maturity: date
     amount: Decimal = Field(gt=0, examples=["5000"])
@@ -214,6 +218,9 @@ class FixedIncomeOut(BaseModel):
     principal: Money = Field(description="Amount invested still held, after partial redemptions")
     status: str = Field(description="ACTIVE, REDEEMED or MATURED")
     as_of: date | None = Field(description="Day of the values below; None until the CDI is known")
+    estimated: bool = Field(
+        description="IPCA+ only: uses the last published IPCA for months not out yet"
+    )
     gross: Money | None
     iof: Money | None
     ir: Money | None
