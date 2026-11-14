@@ -69,13 +69,14 @@ Trades are processed **in date order** (not in the order they were entered), and
 - **No `float` for money.** `Decimal` in Python and `Numeric` in the database, because `0.1 + 0.2 != 0.3` in floating point.
 - **Calculations are isolated** in a pure module with no database or HTTP access. It takes a list of trades and returns positions, which makes it easy to test.
 - **The API token stays on the server.** The frontend never calls brapi directly.
+- **Decimals are stored as text on SQLite.** SQLite has no real decimal type, so SQLAlchemy would store `Numeric` as a float. A custom column type keeps exact values on SQLite and uses native `NUMERIC` on PostgreSQL.
 - **Quotes are cached** for about 15 minutes per ticker. If the API is down, the last known price is used.
 
 ## Roadmap
 
-- [ ] **Stage 0:** project setup
-- [ ] **Stage 1:** pure calculation logic + tests
-- [ ] **Stage 2:** database (SQLAlchemy)
+- [x] **Stage 0:** project setup
+- [x] **Stage 1:** pure calculation logic + tests
+- [x] **Stage 2:** database (SQLAlchemy)
 - [ ] **Stage 3:** REST API (FastAPI)
 - [ ] **Stage 4:** live quotes (brapi) with caching
 - [ ] **Stage 5:** Streamlit UI
@@ -90,9 +91,22 @@ git clone https://github.com/samuel-mendes-monteiro/InvestTrack.git
 cd InvestTrack
 python3 -m venv .venv
 source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
-More instructions will be added as the project grows.
+Run the tests:
+
+```bash
+pytest
+```
+
+Create a local SQLite database with sample trades and print the portfolio:
+
+```bash
+python -m investtrack.demo
+```
+
+The database URL can be changed with the `DATABASE_URL` environment variable (default: `sqlite:///investtrack.db`).
 
 ## License
 
