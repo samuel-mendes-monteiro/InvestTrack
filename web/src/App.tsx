@@ -1,16 +1,20 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router'
 import { api, call } from './api/client'
 import { keys } from './api/queries'
 import { setToken, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
-import { FixedIncomePage } from './fixed-income/FixedIncomePage'
-import { IncomePage } from './income/IncomePage'
 import { OperationForm } from './operations/OperationForm'
-import { OperationsPage } from './operations/OperationsPage'
-import { PerformancePage } from './performance/PerformancePage'
-import { PortfolioPage } from './portfolio/PortfolioPage'
+
+// Each page is its own chunk, downloaded the first time it's opened: the login
+// screen doesn't wait for the charting library, and a page's code only loads
+// for people who visit it.
+const PortfolioPage = lazy(() => import('./portfolio/PortfolioPage').then((m) => ({ default: m.PortfolioPage })))
+const PerformancePage = lazy(() => import('./performance/PerformancePage').then((m) => ({ default: m.PerformancePage })))
+const OperationsPage = lazy(() => import('./operations/OperationsPage').then((m) => ({ default: m.OperationsPage })))
+const IncomePage = lazy(() => import('./income/IncomePage').then((m) => ({ default: m.IncomePage })))
+const FixedIncomePage = lazy(() => import('./fixed-income/FixedIncomePage').then((m) => ({ default: m.FixedIncomePage })))
 
 export default function App() {
   const { token, notice } = useSession()
@@ -69,12 +73,14 @@ function Shell() {
         </button>
       </header>
       <main>
-        <Routes>
-          {PAGES.map((p) => (
-            <Route key={p.path} path={p.path} element={p.element} />
-          ))}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<p className="muted">Carregando…</p>}>
+          <Routes>
+            {PAGES.map((p) => (
+              <Route key={p.path} path={p.path} element={p.element} />
+            ))}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </main>
       {creating && <OperationForm onClose={() => setCreating(false)} />}
     </>

@@ -327,7 +327,7 @@ def create_app(
     app = FastAPI(
         title="InvestTrack API",
         description="Portfolio tracker for the Brazilian stock market (B3).",
-        version="0.7.0",
+        version="1.0.0",
         lifespan=lifespan,
     )
 

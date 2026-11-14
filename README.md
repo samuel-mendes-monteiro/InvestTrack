@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/samuel-mendes-monteiro/InvestTrack/actions/workflows/ci.yml/badge.svg)](https://github.com/samuel-mendes-monteiro/InvestTrack/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.14-blue)
+![TypeScript](https://img.shields.io/badge/react-TypeScript-blue)
 ![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -22,9 +23,11 @@ InvestTrack is a web app where each person, with their own account, records thei
 - realized and unrealized profit/loss, in R$ and in %
 - dividends, JCP and FII distributions, **computed automatically** from what B3 publishes and what you owned on each record date, including income still to be paid
 - how your portfolio is split across assets
-- fixed income (CDB, LCI, LCA) at % of CDI or pre-fixed rates, valued daily with IOF and regressive income tax
+- fixed income (CDB, LCI, LCA) at % of CDI, pre-fixed or IPCA+, valued daily with IOF and regressive income tax, with partial redemptions
 - trades imported from **B3's trade statement** (Excel), with a preview and without duplicates
 - your **time-weighted return** since the first trade, compared with the CDI and the Ibovespa
+
+![Performance view: time-weighted return against CDI and Ibovespa](docs/performance.jpg)
 
 Quotes from B3 are fetched automatically from [brapi.dev](https://brapi.dev), and income events from B3's own website. Invalid operations, such as selling more shares than you own on that date, are refused with a clear message:
 
@@ -40,7 +43,8 @@ Positions (quantity, average cost) are **never stored** in the database. They ar
 
 ```mermaid
 flowchart LR
-    UI["<b>Frontend</b><br/>Streamlit"] -- "HTTP / JSON" --> API["<b>API</b><br/>FastAPI"]
+    UI["<b>Frontend</b><br/>React + TypeScript"] -- "HTTP / JSON" --> API["<b>API</b><br/>FastAPI"]
+    API -. "OpenAPI schema" .-> UI
     API --> Core["<b>Calculation core</b><br/>pure Python, no I/O"]
     API --> Repo["<b>Repository</b><br/>SQLAlchemy"]
     Repo --> DB[("SQLite / PostgreSQL")]
@@ -74,7 +78,10 @@ flowchart LR
 | [`investtrack/migrations/`](investtrack/migrations) | Alembic migrations, applied automatically when the API starts |
 | [`investtrack/prices.py`](investtrack/prices.py) | Quote cache with fallback to the last known price |
 | [`investtrack/brapi.py`](investtrack/brapi.py) | The only module that knows brapi's URL and JSON format |
-| [`frontend/`](frontend) | Streamlit UI, a pure HTTP client of the API |
+| [`investtrack/openapi.py`](investtrack/openapi.py) | Exports the API's OpenAPI schema, which the frontend's types are generated from |
+| [`web/src/api/`](web/src/api) | Typed API client: session token, error codes translated into Portuguese, one hook per endpoint |
+| [`web/src/format.ts`](web/src/format.ts) | Brazilian formatting of the API's decimal strings, exact (BigInt), never through a float |
+| [`web/src/`](web/src) | One folder per screen: portfolio, performance, operations, income, fixed income |
 
 ## Calculation rules
 
@@ -153,7 +160,7 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 
 ## Technical decisions
 
-- **No `float` for money.** `Decimal` everywhere, because `0.1 + 0.2 != 0.3` in floating point. This is enforced, not just a convention: the core rejects floats, JSON numbers from brapi and from clients are parsed straight into `Decimal`, and money is typed into text fields (accepting `30,50` or `1.234,56`) because Streamlit's number input returns a float.
+- **No `float` for money.** `Decimal` everywhere, because `0.1 + 0.2 != 0.3` in floating point. This is enforced, not just a convention: the core rejects floats, JSON numbers from brapi and from clients are parsed straight into `Decimal`, and money is typed into text fields (accepting `30,50` or `1.234,56`), not number inputs, which give the browser's float.
 - **Decimals are stored as text on SQLite.** SQLite has no real decimal type, so SQLAlchemy would silently store `Numeric` as a float. A custom column type keeps exact values on SQLite and uses native `NUMERIC` on PostgreSQL.
 - **Rounding happens only for display.** Calculations keep full precision; the API rounds to 2 decimals only in the response, and sends money as JSON strings (`"35.10"`) so clients never turn it into a float.
 - **Calculations are isolated** in a pure module that takes a list of trades and returns positions. The repository reuses it to validate changes: adding a sale, or deleting a purchase that a later sale depends on, is refused before anything is saved.
@@ -181,7 +188,11 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 - **The trade statement, not the movement one.** B3's movement statement ("Movimentação") is dated by settlement, two business days after the trade. A buy on a record date would show up after it, and its income and the order of the trades would be wrong.
 - **Uploaded files are untrusted.** The file goes as the raw request body (no multipart parser needed), files over 5 MB are refused from the `Content-Length` header before being read, and openpyxl parses the XML through `defusedxml`. The login check runs before the upload is read: FastAPI resolves dependencies in parameter order.
 - **B3's spreadsheets declare a wrong size** (`<dimension ref="A1"/>`), and openpyxl's fast mode trusts it and reads a single cell; the size is recomputed before reading. Numbers come as Excel floats and are turned into `Decimal` through `repr`, which gives back the decimal that was typed.
-- **The frontend never imports the backend.** It only talks to the API over HTTP, so the Streamlit UI can later be replaced by React without touching the backend.
+- **The frontend never imports the backend.** It only talks to the API over HTTP. That is what let the first UI (Streamlit, until v0.7) be replaced by React without touching the backend.
+- **The frontend is typed from the API.** `investtrack/openapi.py` exports the OpenAPI schema to `web/openapi.json`, and `openapi-typescript` turns it into TypeScript types: a wrong path, a renamed field or a new enum value is a compile error. A Python test fails if the committed schema is stale, so the two sides can't drift apart silently. Enums (`OpType`, statuses, skip reasons) are typed as closed unions, and every label map is a `Record` over them, so a new value breaks the build until it has a Portuguese name.
+- **The browser formats money without floats too.** The API sends decimals as strings; `format.ts` rounds them on their digits with `BigInt`, half to even like Python's `Decimal`, and sums and averages exactly. `Number` is used only to draw charts, where a pixel can't be off by a cent. Python writes some decimals with an exponent (a closed position is `"0E-8"`), so the parser reads that form as well.
+- **The server owns the data, the browser caches it.** TanStack Query keeps one cache of what the API returned; screens read from it instead of copying it into component state. After any change everything is refetched: one trade moves positions, computed income, stock events and the TWR, and only the API knows how. Screens that wait for a background download (CDI, history) poll until it ends instead of asking the user to reload.
+- **Same origin, no CORS.** The browser only calls `/api/...`; in development Vite forwards it to uvicorn. Logging out or an expired session (any `401`) empties the cache, so the next person on the same browser never sees cached data.
 
 ## Testing
 
@@ -189,7 +200,15 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 pytest --cov
 ```
 
-406 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
+399 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota.
+
+```bash
+cd web && npm test
+```
+
+79 frontend tests ([Vitest](https://vitest.dev) and Testing Library) drive the screens like a user (typing, clicking, uploading a statement) against a fake API, and check what is shown and what is sent.
+
+Every push runs, with [GitHub Actions](.github/workflows/ci.yml), the linter, the formatter check and the tests on Python 3.12 and 3.14, and the frontend's linter, type check, tests and build.
 
 The calculation tests include the worked example used to design the rules:
 
@@ -202,14 +221,15 @@ The calculation tests include the worked example used to design the rules:
 
 ## Getting started
 
-Requires Python 3.12+.
+Requires Python 3.12+ and Node.js 20+.
 
 ```bash
 git clone https://github.com/samuel-mendes-monteiro/InvestTrack.git
 cd InvestTrack
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,ui]"
+pip install -e ".[dev]"
+cd web && npm ci && cd ..
 ```
 
 Quotes come from brapi.dev. Copy the example settings and add your free brapi token (without a token, only PETR4, VALE3, MGLU3 and ITUB4 work):
@@ -218,7 +238,7 @@ Quotes come from brapi.dev. Copy the example settings and add your free brapi to
 cp .env.example .env
 ```
 
-Optionally, create a database with a demo account, sample trades and income (it prints the email and password to log in with):
+Optionally, create a database with a demo account, sample trades, income and fixed income (it prints the email and password to log in with):
 
 ```bash
 python -m investtrack.demo
@@ -232,10 +252,18 @@ Start the API (interactive docs at http://localhost:8000/docs):
 uvicorn investtrack.api:app --reload
 ```
 
-In another terminal, start the web interface (http://localhost:8501):
+In another terminal, start the web interface (http://localhost:5173):
 
 ```bash
-streamlit run frontend/app.py
+cd web
+npm run dev
+```
+
+After changing the API's routes or schemas, regenerate the frontend's types (and fix whatever no longer type-checks):
+
+```bash
+cd web
+npm run gen:api
 ```
 
 ### API
@@ -278,7 +306,7 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 | `BRAPI_TOKEN` | *(empty)* | brapi.dev token |
 | `PRICE_CACHE_MINUTES` | `15` | How long a quote is reused |
 | `DATABASE_URL` | `sqlite:///investtrack.db` | Any SQLAlchemy URL, e.g. PostgreSQL |
-| `API_URL` | `http://localhost:8000` | Where the frontend finds the API |
+| `API_URL` | `http://localhost:8000` | Where the frontend's dev server forwards `/api` (read by `npm run dev`) |
 
 ## Roadmap
 
@@ -286,7 +314,7 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 - [x] Database (SQLAlchemy)
 - [x] REST API (FastAPI)
 - [x] Live quotes (brapi) with caching
-- [x] Streamlit UI
+- [x] Streamlit UI (replaced by React in v1.0)
 - [x] CI with GitHub Actions
 - [x] **v0.2:** dividends, JCP and REIT (FII) income
 - [x] Stock splits, reverse splits and bonus shares
@@ -296,7 +324,8 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 - [x] **v0.5:** login and multiple users
 - [x] **v0.6:** import B3 trade statements
 - [x] **v0.7:** partial redemptions and IPCA+ fixed income, editing operations, login rate limiting
-- [ ] **v1.0:** React frontend and cloud deployment
+- [x] **v1.0:** React + TypeScript frontend, typed from the API's OpenAPI schema
+- [ ] Cloud deployment (Fly.io)
 
 ## License
 

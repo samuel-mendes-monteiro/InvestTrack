@@ -1,4 +1,4 @@
-"""Demo: a database with a demo account, sample trades and income.
+"""Demo: a database with a demo account, sample trades, income and fixed income.
 
 Run with:  python -m investtrack.demo
 Then log in to the web interface with the email and password printed.
@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 
 from investtrack.auth import Auth
 from investtrack.db import create_db_engine, init_db
+from investtrack.fixed_income import FixedIncome, Indexer, Product
 from investtrack.income import Income, IncomeType, net_income_by_ticker
 from investtrack.models import AssetType, OperationRecord, User
 from investtrack.portfolio import Operation, OpType
 from investtrack.repository import (
+    add_fixed_income,
     add_income,
     add_operation,
     get_portfolio,
@@ -35,6 +37,7 @@ SAMPLE = [
     (_op("PETR4", OpType.SELL, date(2026, 3, 10), "50", "50", "10"), AssetType.STOCK),
     (_op("HGLG11", OpType.BUY, date(2026, 1, 20), "10", "158.40"), AssetType.FII),
     (_op("IVVB11", OpType.BUY, date(2026, 4, 2), "5", "352.15", "4.90"), AssetType.ETF),
+    (_op("AAPL34", OpType.BUY, date(2026, 3, 2), "20", "62.40", "4.90"), AssetType.BDR),
 ]
 
 
@@ -42,12 +45,33 @@ def _inc(ticker, income_type, day, amount, tax="0"):
     return Income(ticker, income_type, day, Decimal(amount), Decimal(tax))
 
 
+# Manual income only: PETR4, HGLG11 and IVVB11 income is computed by the API
+# from B3's events, so entering it here would count it twice. B3 doesn't
+# publish BDR dividends, which is what manual entries are for.
 INCOME = [
-    _inc("HGLG11", IncomeType.DISTRIBUTION, date(2026, 2, 13), "11.00"),
-    _inc("HGLG11", IncomeType.DISTRIBUTION, date(2026, 3, 13), "11.00"),
-    _inc("PETR4", IncomeType.DIVIDEND, date(2026, 2, 20), "94.60"),
-    _inc("PETR4", IncomeType.JCP, date(2026, 3, 20), "60.00", "9.00"),
-    _inc("HGLG11", IncomeType.DISTRIBUTION, date(2026, 4, 14), "11.00"),
+    _inc("AAPL34", IncomeType.DIVIDEND, date(2026, 5, 18), "1.12", "0.34"),
+    _inc("AAPL34", IncomeType.DIVIDEND, date(2026, 8, 17), "1.15", "0.35"),
+]
+
+FIXED_INCOME = [
+    FixedIncome(
+        "CDB Banco Demo",
+        Product.CDB,
+        Indexer.CDI,
+        Decimal("110"),
+        date(2026, 2, 2),
+        date(2028, 2, 2),
+        Decimal("5000"),
+    ),
+    FixedIncome(
+        "LCI Banco Demo",
+        Product.LCI,
+        Indexer.PRE,
+        Decimal("12.5"),
+        date(2026, 4, 6),
+        date(2027, 4, 6),
+        Decimal("3000"),
+    ),
 ]
 
 
@@ -81,7 +105,12 @@ def main() -> None:
                 add_operation(session, user.id, op, asset_type)
             for income in INCOME:
                 add_income(session, user.id, income)
-            print(f"Inserted {len(SAMPLE)} operations and {len(INCOME)} income into {engine.url}\n")
+            for investment in FIXED_INCOME:
+                add_fixed_income(session, user.id, investment)
+            print(
+                f"Inserted {len(SAMPLE)} operations, {len(INCOME)} manual income and "
+                f"{len(FIXED_INCOME)} fixed income into {engine.url}\n"
+            )
 
         # Only manual entries here: B3 income is computed by the API.
         records = list_incomes(session, user.id)
