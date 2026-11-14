@@ -29,6 +29,13 @@ def v04(engine):
     alembic(engine, "upgrade", "0001")
     with engine.begin() as c:
         c.execute(text("DROP TABLE alembic_version"))
+        # left behind by v0.2, superseded by event_sync in v0.2.1
+        c.execute(
+            text(
+                "CREATE TABLE income_event_sync "
+                "(ticker VARCHAR(12) PRIMARY KEY, synced_at DATETIME)"
+            )
+        )
         c.execute(text("INSERT INTO assets (id, ticker, asset_type) VALUES (1, 'PETR4', 'STOCK')"))
         c.execute(
             text(
@@ -61,13 +68,14 @@ def test_v04_database_keeps_its_data_and_gets_owners(v04):
     engine = v04
     init_db(engine)
     with engine.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0002"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
         assert c.execute(text("SELECT quantity, user_id FROM operations")).one() == ("100", None)
         assert c.execute(text("SELECT ticker, unit_cost FROM bonus_costs")).one() == (
             "PETR4",
             "4.5",
         )
     assert {"id", "user_id"} <= columns(engine, "bonus_costs")
+    assert "income_event_sync" not in inspect(engine).get_table_names()
 
 
 def test_running_twice_changes_nothing(v04):
