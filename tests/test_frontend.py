@@ -7,7 +7,7 @@ import pytest
 import requests
 
 from api_client import ApiClient, ApiError
-from formatting import brl, parse_decimal, pct, quantity
+from formatting import brl, parse_decimal, pct, per_share, quantity
 
 # --- formatting --------------------------------------------------------------
 
@@ -138,3 +138,55 @@ def test_api_offline():
 def test_numbers_are_not_parsed_as_float():
     client, _ = client_with(fake_response(200, '[{"price": 0.1}]'))
     assert client.operations()[0]["price"] == Decimal("0.1")
+
+
+def test_income_before_first_buy_is_translated():
+    body = (
+        '{"detail": {"code": "INCOME_WITHOUT_POSITION", "message": "...", "ticker": "PETR4",'
+        ' "income_date": "2026-01-05", "first_buy": "2026-01-10"}}'
+    )
+    assert api_error_for(422, body) == (
+        "A primeira compra de PETR4 foi em 10/01/2026, então não pode haver provento em 05/01/2026."
+    )
+
+
+def test_income_for_ticker_never_bought_is_translated():
+    body = (
+        '{"detail": {"code": "INCOME_WITHOUT_POSITION", "message": "...", "ticker": "PETR3",'
+        ' "income_date": "2026-01-05", "first_buy": null}}'
+    )
+    assert api_error_for(422, body) == "Não há compra de PETR3 registrada. Confira o ticker."
+
+
+def test_delete_orphaning_income_is_translated():
+    body = '{"detail": {"code": "DELETE_ORPHANS_INCOME", "message": "...", "ticker": "ITSA4"}}'
+    assert "proventos de ITSA4" in api_error_for(409, body)
+
+
+def test_tax_above_amount_is_translated():
+    body = (
+        '{"detail": [{"loc": ["body", "tax"], "type": "value_error",'
+        ' "msg": "Value error, tax cannot be larger than the amount"}]}'
+    )
+    assert api_error_for(422, body) == "O IR retido não pode ser maior que o valor bruto."
+
+
+def test_monthly_income_sends_year():
+    client, session = client_with(fake_response(200, "[]"))
+    client.monthly_income(2026)
+    session.request.assert_called_once_with(
+        "GET", "http://api.test/income/monthly", timeout=15.0, params={"year": 2026}
+    )
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("0.10245643978", "R$ 0,10245644"),
+        ("1.17000000000", "R$ 1,17"),
+        ("2", "R$ 2,00"),
+        (None, "—"),
+    ],
+)
+def test_per_share(value, expected):
+    assert per_share(value) == expected

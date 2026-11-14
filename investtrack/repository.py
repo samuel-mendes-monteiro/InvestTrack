@@ -1,15 +1,19 @@
-"""Reading and writing operations.
+"""Reading and writing operations and income.
 
 This is the only module that talks to both the database and the
-calculation core. Business rules (no selling more than you own) are not
-duplicated here: every change is validated by recalculating the position
-with portfolio.calculate_position before it is saved.
+calculation core. Business rules (no selling more than you own, no income
+before the first buy) are not duplicated here: every change is validated
+by the calculation core before it is saved.
 """
+
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, contains_eager
 
-from investtrack.models import Asset, AssetType, OperationRecord
+from investtrack.income import Income, check_incomes, incomes_from_events
+from investtrack.income_events import IncomeEventSource
+from investtrack.models import Asset, AssetType, IncomeRecord, OperationRecord
 from investtrack.portfolio import (
     Operation,
     Position,
@@ -22,6 +26,12 @@ class OperationNotFoundError(LookupError):
     def __init__(self, operation_id: int):
         self.operation_id = operation_id
         super().__init__(f"operation {operation_id} not found")
+
+
+class IncomeNotFoundError(LookupError):
+    def __init__(self, income_id: int):
+        self.income_id = income_id
+        super().__init__(f"income {income_id} not found")
 
 
 def to_domain(record: OperationRecord) -> Operation:
@@ -98,6 +108,9 @@ def delete_operation(session: Session, operation_id: int) -> None:
     ]
     if remaining:
         calculate_position(remaining)  # raises if the remaining list is invalid
+    # Deleting the first buy may leave income paid before any remaining buy.
+    incomes = [income_to_domain(r) for r in list_incomes(session, record.asset.ticker)]
+    check_incomes(remaining, incomes)
 
     session.delete(record)
     session.commit()
@@ -105,3 +118,80 @@ def delete_operation(session: Session, operation_id: int) -> None:
 
 def get_portfolio(session: Session) -> dict[str, Position]:
     return calculate_portfolio([to_domain(r) for r in list_operations(session)])
+
+
+# --- income ------------------------------------------------------------------
+
+
+def income_to_domain(record: IncomeRecord) -> Income:
+    return Income(
+        ticker=record.asset.ticker,
+        income_type=record.income_type,
+        date=record.date,
+        amount=record.amount,
+        tax=record.tax,
+    )
+
+
+def list_incomes(
+    session: Session, ticker: str | None = None, year: int | None = None
+) -> list[IncomeRecord]:
+    """Income ordered by (date, id), optionally filtered by ticker and year."""
+    stmt = (
+        select(IncomeRecord)
+        .join(IncomeRecord.asset)
+        .options(contains_eager(IncomeRecord.asset))
+        .order_by(IncomeRecord.date, IncomeRecord.id)
+    )
+    if ticker is not None:
+        stmt = stmt.where(Asset.ticker == ticker.strip().upper())
+    if year is not None:
+        # A date range, not extract(year): an index can serve a range, not a function.
+        stmt = stmt.where(
+            IncomeRecord.date >= date(year, 1, 1), IncomeRecord.date < date(year + 1, 1, 1)
+        )
+    return list(session.scalars(stmt))
+
+
+def add_income(session: Session, income: Income) -> IncomeRecord:
+    """Save income, refusing it if the ticker wasn't bought by the payment date.
+
+    Raises IncomeWithoutPositionError (nothing is saved in that case). The
+    asset is never created here: an unknown ticker is almost always a typo.
+    """
+    operations = [to_domain(r) for r in list_operations(session, income.ticker)]
+    check_incomes(operations, [income])
+
+    asset = session.scalar(select(Asset).where(Asset.ticker == income.ticker))
+    record = IncomeRecord(
+        asset=asset,
+        income_type=income.income_type,
+        date=income.date,
+        amount=income.amount,
+        tax=income.tax,
+    )
+    session.add(record)
+    session.commit()
+    return record
+
+
+def delete_income(session: Session, income_id: int) -> None:
+    """Income depends on nothing, so deleting it is always allowed."""
+    record = session.get(IncomeRecord, income_id)
+    if record is None:
+        raise IncomeNotFoundError(income_id)
+    session.delete(record)
+    session.commit()
+
+
+def computed_incomes(session: Session, events: IncomeEventSource) -> list[Income]:
+    """Income from published events, given the operations. Never stored."""
+    by_ticker: dict[str, tuple[AssetType, list[Operation]]] = {}
+    for record in list_operations(session):
+        asset_type, ops = by_ticker.setdefault(record.asset.ticker, (record.asset.asset_type, []))
+        ops.append(to_domain(record))
+
+    incomes = []
+    for ticker, (asset_type, ops) in by_ticker.items():
+        incomes += incomes_from_events(ops, events.events_for(ticker, asset_type))
+    return incomes

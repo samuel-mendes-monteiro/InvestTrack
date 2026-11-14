@@ -6,15 +6,20 @@ from fastapi.testclient import TestClient
 
 from investtrack.api import create_app
 from investtrack.db import create_db_engine
+from investtrack.income import IncomeEvent, IncomeType
+from investtrack.income_events import StaticIncomeEvents
 from investtrack.prices import StaticPriceProvider
+
+PRICES = StaticPriceProvider({"PETR4": Decimal("38"), "HGLG11": Decimal("160")})
 
 
 @pytest.fixture
 def client():
-    """API backed by an in-memory database and fixed test prices."""
+    """API backed by an in-memory database, fixed prices and no income events."""
     app = create_app(
         engine=create_db_engine("sqlite://"),
-        price_provider=StaticPriceProvider({"PETR4": Decimal("38"), "HGLG11": Decimal("160")}),
+        price_provider=PRICES,
+        income_events=StaticIncomeEvents(),
     )
     with TestClient(app) as c:  # "with" runs the startup/shutdown (lifespan)
         yield c
@@ -153,6 +158,7 @@ def test_portfolio_example_from_project_doc(client):
         "current_value": "5700.00",
         "result": "450.00",
         "result_pct": "8.57",
+        "income": "0.00",
     }
     assert body["totals"]["result"] == "450.00"
     assert body["totals"]["realized_profit"] == "750.00"
@@ -181,3 +187,218 @@ def test_empty_portfolio(client):
     assert body["positions"] == []
     assert body["totals"]["invested"] == "0.00"
     assert body["totals"]["result_pct"] is None
+
+
+# --- income ------------------------------------------------------------------
+
+
+def inc(kind="DIVIDEND", amount="10", tax="0", ticker="PETR4", day="2026-01-05"):
+    return {"ticker": ticker, "income_type": kind, "date": day, "amount": amount, "tax": tax}
+
+
+def test_create_income(client):
+    client.post("/operations", json=op())
+    r = client.post("/income", json=inc("JCP", amount="100", tax="15", ticker="petr4"))
+    assert r.status_code == 201
+    body = r.json()
+    assert body["ticker"] == "PETR4"
+    assert body["net"] == "85"
+
+
+def test_income_before_first_buy_is_rejected(client):
+    client.post("/operations", json=op(day="2026-01-10"))
+    r = client.post("/income", json=inc(day="2026-01-05"))
+    assert r.status_code == 422
+    assert r.json()["detail"] == {
+        "code": "INCOME_WITHOUT_POSITION",
+        "message": "Income from PETR4 on 2026-01-05, but PETR4 was first bought on 2026-01-10",
+        "ticker": "PETR4",
+        "income_date": "2026-01-05",
+        "first_buy": "2026-01-10",
+    }
+
+
+def test_income_for_unknown_ticker_is_rejected(client):
+    r = client.post("/income", json=inc(ticker="PETR3"))
+    assert r.status_code == 422
+    assert r.json()["detail"]["first_buy"] is None
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("amount", "0"), ("tax", "-1"), ("tax", "10.01"), ("kind", "BONUS"), ("ticker", "")],
+)
+def test_invalid_income_is_rejected(client, field, value):
+    client.post("/operations", json=op())
+    assert client.post("/income", json=inc(**{field: value})).status_code == 422
+
+
+def test_future_income_is_rejected(client):
+    client.post("/operations", json=op())
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    assert client.post("/income", json=inc(day=tomorrow)).status_code == 422
+
+
+def test_list_income_filtered(client):
+    client.post("/operations", json=op())
+    client.post("/operations", json=op(ticker="HGLG11"))
+    client.post("/income", json=inc(day="2026-02-01"))
+    client.post("/income", json=inc("DISTRIBUTION", ticker="HGLG11", day="2026-01-15"))
+
+    assert [i["date"] for i in client.get("/income").json()] == ["2026-01-15", "2026-02-01"]
+    assert len(client.get("/income", params={"ticker": "PETR4"}).json()) == 1
+    assert client.get("/income", params={"year": 2025}).json() == []
+
+
+def test_delete_income(client):
+    client.post("/operations", json=op())
+    created = client.post("/income", json=inc()).json()
+    assert client.delete(f"/income/{created['id']}").status_code == 204
+    assert client.get("/income").json() == []
+    r = client.delete(f"/income/{created['id']}")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "INCOME_NOT_FOUND"
+
+
+def test_deleting_buy_behind_income_is_refused(client):
+    buy_op = client.post("/operations", json=op()).json()
+    client.post("/income", json=inc())
+    r = client.delete(f"/operations/{buy_op['id']}")
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "DELETE_ORPHANS_INCOME"
+
+
+def test_income_per_month(client):
+    client.post("/operations", json=op())
+    client.post("/income", json=inc(amount="10", day="2026-01-05"))
+    client.post("/income", json=inc("JCP", amount="100", tax="15", day="2026-01-20"))
+    client.post("/income", json=inc(amount="5", day="2026-03-05"))
+
+    months = client.get("/income/monthly").json()
+    assert months[0] == {
+        "year": 2026,
+        "month": 1,
+        "dividend": "10.00",
+        "jcp": "85.00",
+        "distribution": "0.00",
+        "tax": "15.00",
+        "net": "95.00",
+    }
+    assert [m["month"] for m in months] == [1, 3]
+    assert client.get("/income/monthly", params={"year": 2025}).json() == []
+
+
+def test_portfolio_includes_net_income_without_changing_avg_price(client):
+    client.post("/operations", json=op(qty="100", price="30"))
+    client.post("/income", json=inc("JCP", amount="100", tax="15"))
+    client.post("/income", json=inc(amount="20"))
+
+    body = client.get("/portfolio").json()
+    assert body["positions"][0]["income"] == "105.00"
+    assert body["positions"][0]["avg_price"] == "30.00"  # income is not a discount on cost
+    assert body["totals"]["income"] == "105.00"
+
+
+# --- income computed from B3 events -----------------------------------------
+
+
+def event(kind, record_day, payment_day, rate, ticker="PETR4"):
+    return IncomeEvent(
+        ticker,
+        IncomeType(kind),
+        date.fromisoformat(record_day),
+        date.fromisoformat(payment_day) if payment_day else None,
+        Decimal(rate),
+    )
+
+
+@pytest.fixture
+def events_client():
+    """Factory: an API whose income events are the given list."""
+    clients = []
+
+    def make(*events):
+        app = create_app(
+            engine=create_db_engine("sqlite://"),
+            price_provider=PRICES,
+            income_events=StaticIncomeEvents(events),
+        )
+        c = TestClient(app)
+        c.__enter__()
+        clients.append(c)
+        return c
+
+    yield make
+    for c in clients:
+        c.__exit__(None, None, None)
+
+
+def test_income_is_computed_from_shares_held_on_record_date(events_client):
+    client = events_client(event("JCP", "2026-03-10", "2026-03-31", "0.50"))
+    client.post("/operations", json=op(qty="100", day="2026-01-05"))
+    client.post("/operations", json=op(qty="50", day="2026-03-10"))  # on the record date: counts
+    client.post("/operations", json=op("SELL", qty="30", day="2026-03-11"))  # after: doesn't
+
+    [income] = client.get("/income").json()
+    assert income["source"] == "B3"
+    assert income["id"] is None  # computed, so it can't be deleted
+    assert income["quantity"] == "150"
+    assert income["record_date"] == "2026-03-10"
+    assert Decimal(income["amount"]) == Decimal("75")
+    assert Decimal(income["tax"]) == Decimal("11.25")  # 15% withheld on JCP
+    assert Decimal(income["net"]) == Decimal("63.75")
+
+
+def test_no_income_without_shares_on_record_date(events_client):
+    client = events_client(event("DIVIDEND", "2026-01-02", "2026-01-20", "1"))
+    client.post("/operations", json=op(day="2026-01-03"))  # bought one day late
+    assert client.get("/income").json() == []
+
+
+def test_fixing_a_trade_fixes_the_income(events_client):
+    client = events_client(event("DIVIDEND", "2026-02-01", "2026-02-15", "1"))
+    client.post("/operations", json=op(qty="100", day="2026-01-05"))
+    extra = client.post("/operations", json=op(qty="100", day="2026-01-06")).json()
+    assert client.get("/income").json()[0]["quantity"] == "200"
+
+    client.delete(f"/operations/{extra['id']}")
+    assert client.get("/income").json()[0]["quantity"] == "100"
+
+
+def test_pending_income_is_separate_from_received(events_client):
+    future = (date.today() + timedelta(days=30)).isoformat()
+    client = events_client(
+        event("DIVIDEND", "2026-02-01", "2026-02-15", "1"),
+        event("DIVIDEND", "2026-03-01", future, "2"),
+    )
+    client.post("/operations", json=op(qty="10", day="2026-01-05"))
+
+    incomes = client.get("/income").json()
+    assert [i["pending"] for i in incomes] == [False, True]
+
+    totals = client.get("/portfolio").json()["totals"]
+    assert totals["income"] == "10.00"
+    assert totals["income_pending"] == "20.00"
+    assert [m["net"] for m in client.get("/income/monthly").json()] == ["10.00"]
+
+
+def test_portfolio_adds_manual_and_computed_income(events_client):
+    client = events_client(event("DIVIDEND", "2026-02-01", "2026-02-15", "1"))
+    client.post("/operations", json=op(qty="10", day="2026-01-05"))
+    client.post("/income", json=inc(amount="5", day="2026-01-10"))
+
+    sources = [i["source"] for i in client.get("/income").json()]
+    assert sources == ["MANUAL", "B3"]
+    assert client.get("/portfolio").json()["positions"][0]["income"] == "15.00"
+
+
+def test_income_filters_apply_to_computed_income(events_client):
+    client = events_client(
+        event("DIVIDEND", "2025-12-01", "2025-12-15", "1"),
+        event("DIVIDEND", "2026-02-01", "2026-02-15", "1"),
+    )
+    client.post("/operations", json=op(qty="10", day="2025-11-05"))
+    assert [i["date"] for i in client.get("/income", params={"year": 2026}).json()] == [
+        "2026-02-15"
+    ]
+    assert client.get("/income", params={"ticker": "vale3"}).json() == []

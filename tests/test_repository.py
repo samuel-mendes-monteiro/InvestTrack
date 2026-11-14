@@ -7,13 +7,19 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from investtrack.db import create_db_engine, init_db
+from investtrack.income import Income, IncomeEvent, IncomeType, IncomeWithoutPositionError
 from investtrack.models import Asset, AssetType, OperationRecord
 from investtrack.portfolio import InsufficientPositionError, Operation, OpType
 from investtrack.repository import (
+    IncomeNotFoundError,
     OperationNotFoundError,
+    add_income,
     add_operation,
+    computed_incomes,
+    delete_income,
     delete_operation,
     get_portfolio,
+    list_incomes,
     list_operations,
 )
 
@@ -147,3 +153,94 @@ def test_values_are_stored_as_text_on_sqlite(session):
     add_operation(session, buy(1, "100", "30.10"))
     stored_type = session.execute(text("SELECT typeof(price) FROM operations")).scalar()
     assert stored_type == "text"  # not "real", i.e. never a float
+
+
+# --- income ------------------------------------------------------------------
+
+
+def dividend(day: int, amount: str, tax: str = "0", ticker: str = "PETR4"):
+    return Income(ticker, IncomeType.DIVIDEND, date(2026, 1, day), Decimal(amount), Decimal(tax))
+
+
+def test_add_and_list_income(session):
+    add_operation(session, buy(1, "100", "30"))
+    add_income(session, dividend(5, "45.10"))
+    session.expire_all()
+
+    record = list_incomes(session)[0]
+    assert record.asset.ticker == "PETR4"
+    assert record.amount == Decimal("45.10")
+
+
+def test_income_before_first_buy_is_refused_and_not_saved(session):
+    add_operation(session, buy(10, "100", "30"))
+    with pytest.raises(IncomeWithoutPositionError):
+        add_income(session, dividend(5, "10"))
+    assert list_incomes(session) == []
+
+
+def test_income_for_unknown_ticker_does_not_create_asset(session):
+    with pytest.raises(IncomeWithoutPositionError):
+        add_income(session, dividend(5, "10", ticker="PETR3"))
+    assert session.scalars(select(Asset)).all() == []
+
+
+def test_list_income_filters_by_ticker_and_year(session):
+    add_operation(session, buy(1, "100", "30"))
+    add_operation(session, buy(1, "10", "158", ticker="HGLG11"), AssetType.FII)
+    add_income(session, dividend(5, "10"))
+    add_income(session, dividend(6, "1", ticker="HGLG11"))
+
+    assert [r.asset.ticker for r in list_incomes(session, "hglg11")] == ["HGLG11"]
+    assert len(list_incomes(session, year=2026)) == 2
+    assert list_incomes(session, year=2025) == []
+
+
+def test_delete_income(session):
+    add_operation(session, buy(1, "100", "30"))
+    record = add_income(session, dividend(5, "10"))
+    delete_income(session, record.id)
+    assert list_incomes(session) == []
+
+
+def test_delete_unknown_income(session):
+    with pytest.raises(IncomeNotFoundError):
+        delete_income(session, 42)
+
+
+def test_deleting_the_buy_behind_an_income_is_refused(session):
+    first_buy = add_operation(session, buy(1, "100", "30"))
+    add_operation(session, buy(10, "100", "30"))
+    add_income(session, dividend(5, "10"))
+
+    with pytest.raises(IncomeWithoutPositionError):
+        delete_operation(session, first_buy.id)
+    assert len(list_operations(session)) == 2
+
+
+def test_deleting_a_later_buy_keeps_income_valid(session):
+    add_operation(session, buy(1, "100", "30"))
+    later = add_operation(session, buy(10, "100", "30"))
+    add_income(session, dividend(5, "10"))
+    delete_operation(session, later.id)  # first buy still covers the income
+
+
+def test_computed_incomes_use_each_asset_type(session):
+    add_operation(session, buy(1, "100", "30"))
+    add_operation(session, buy(1, "10", "158", ticker="HGLG11"), AssetType.FII)
+    asked = []
+
+    class Events:
+        def events_for(self, ticker, asset_type):
+            asked.append((ticker, asset_type))
+            rate = Decimal("1.10") if ticker == "HGLG11" else Decimal("0.50")
+            return [
+                IncomeEvent(ticker, IncomeType.DIVIDEND, date(2026, 1, 2), date(2026, 1, 9), rate)
+            ]
+
+    incomes = computed_incomes(session, Events())
+    assert sorted(asked) == [("HGLG11", AssetType.FII), ("PETR4", AssetType.STOCK)]
+    assert {i.ticker: i.amount for i in incomes} == {
+        "PETR4": Decimal("50"),
+        "HGLG11": Decimal("11"),
+    }

@@ -40,6 +40,19 @@ class ApiClient:
     def delete_operation(self, operation_id: int) -> None:
         self._request("DELETE", f"/operations/{operation_id}")
 
+    def incomes(self) -> list[dict]:
+        return self._request("GET", "/income")
+
+    def monthly_income(self, year: int | None = None) -> list[dict]:
+        params = {"year": year} if year else None
+        return self._request("GET", "/income/monthly", params=params)
+
+    def create_income(self, payload: dict) -> dict:
+        return self._request("POST", "/income", json=payload)
+
+    def delete_income(self, income_id: int) -> None:
+        self._request("DELETE", f"/income/{income_id}")
+
     def _request(self, method: str, path: str, **kwargs):
         try:
             r = self.session.request(method, self.base_url + path, timeout=self.timeout, **kwargs)
@@ -61,7 +74,16 @@ FIELD_NAMES = {
     "price": "Preço",
     "fees": "Taxas",
     "asset_type": "Classe do ativo",
+    "income_type": "Tipo de provento",
+    "amount": "Valor bruto",
+    "tax": "IR retido",
 }
+
+
+def _br_date(iso: str) -> str:
+    """'2026-01-05' -> '05/01/2026'"""
+    year, month, day = iso.split("-")
+    return f"{day}/{month}/{year}"
 
 
 def _qty(value: str) -> str:
@@ -83,6 +105,20 @@ def _domain_error(d: dict) -> str:
             )
         case "OPERATION_NOT_FOUND":
             return "Operação não encontrada. Talvez ela já tenha sido apagada."
+        case "INCOME_WITHOUT_POSITION" if d.get("first_buy"):
+            return (
+                f"A primeira compra de {d['ticker']} foi em {_br_date(d['first_buy'])}, "
+                f"então não pode haver provento em {_br_date(d['income_date'])}."
+            )
+        case "INCOME_WITHOUT_POSITION":
+            return f"Não há compra de {d['ticker']} registrada. Confira o ticker."
+        case "DELETE_ORPHANS_INCOME":
+            return (
+                f"Apagar essa compra deixaria proventos de {d['ticker']} recebidos "
+                "antes de qualquer compra. Apague os proventos primeiro."
+            )
+        case "INCOME_NOT_FOUND":
+            return "Provento não encontrado. Talvez ele já tenha sido apagado."
         case _:
             return d.get("message", "Erro desconhecido da API.")
 
@@ -104,6 +140,8 @@ def _validation_error(err: dict) -> str:
         return f"{field} {messages[err['type']]}"
     if "future" in err.get("msg", ""):
         return "A data não pode estar no futuro"
+    if "larger than the amount" in err.get("msg", ""):
+        return "O IR retido não pode ser maior que o valor bruto"
     return f"{field}: {err.get('msg', 'inválido')}"
 
 

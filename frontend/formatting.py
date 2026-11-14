@@ -18,6 +18,16 @@ def pct(value) -> str:
     return f"{Decimal(value):+.2f}%".replace(".", ",")
 
 
+def per_share(value) -> str:
+    """'0.10245643978' -> 'R$ 0,10245644' (8 decimals at most). None -> '—'."""
+    if value is None:
+        return "—"
+    d = Decimal(value).quantize(Decimal("0.00000001")).normalize()
+    if d == d.to_integral():
+        d = d.quantize(Decimal("0.01"))
+    return "R$ " + f"{d:f}".replace(".", ",")
+
+
 def quantity(value) -> str:
     """'150' -> '150', '0.5' -> '0,5' (no trailing zeros)."""
     d = Decimal(value).normalize()
