@@ -17,6 +17,7 @@ from pydantic import (
     field_validator,
 )
 
+from investtrack.fixed_income import Indexer, Product
 from investtrack.income import IncomeSource, IncomeType
 from investtrack.models import AssetType
 from investtrack.portfolio import OpType, StockEventType
@@ -148,11 +149,45 @@ class PortfolioTotals(BaseModel):
     realized_profit: Money
     income: Money
     income_pending: Money = Field(description="Announced income not paid yet")
+    fixed_income: Money = Field(description="Net value of fixed income still invested")
 
 
 class PortfolioOut(BaseModel):
     positions: list[PositionOut]
     totals: PortfolioTotals
+
+
+class FixedIncomeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100, examples=["CDB Banco X"])
+    product: Product
+    indexer: Indexer
+    rate: Decimal = Field(gt=0, description="% of CDI (110) or % per year (12.5)", examples=["110"])
+    start: PastDate
+    maturity: date
+    amount: Decimal = Field(gt=0, examples=["5000"])
+
+
+class RedeemIn(BaseModel):
+    redeemed_on: PastDate | None = Field(description="None undoes an early redemption")
+
+
+class FixedIncomeOut(BaseModel):
+    id: int
+    name: str
+    product: Product
+    indexer: Indexer
+    rate: Decimal
+    start: date
+    maturity: date
+    amount: Money
+    redeemed_on: date | None
+    status: str = Field(description="ACTIVE, REDEEMED or MATURED")
+    as_of: date | None = Field(description="Day of the values below; None until the CDI is known")
+    gross: Money | None
+    iof: Money | None
+    ir: Money | None
+    net: Money | None
+    gross_return: Money | None = Field(description="Gross return since the start, %")
 
 
 class PerformancePoint(BaseModel):

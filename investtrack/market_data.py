@@ -22,7 +22,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 
-from sqlalchemy import Engine, delete, insert, select
+from sqlalchemy import Engine, delete, func, insert, select
 from sqlalchemy.orm import Session
 
 from investtrack.history import (
@@ -120,7 +120,9 @@ class MarketData:
             missing += [f"COTAHIST:M{month:02d}{year}"] if month_over else days
         return [p for p in missing if p not in loaded]
 
-    def _missing_benchmarks(self, loaded: dict[str, datetime], start: date) -> list[str]:
+    def _missing_benchmarks(
+        self, loaded: dict[str, datetime], start: date, cdi_from: date | None
+    ) -> list[str]:
         today = self._today()
         missing = []
         for year in range(start.year, today.year + 1):
@@ -128,14 +130,22 @@ class MarketData:
             fresh = period in loaded and (year < today.year or _day(loaded[period]) == today)
             if not fresh:
                 missing.append(period)
-        if CDI not in loaded or _day(loaded[CDI]) != today:
+        # Loaded today is not enough: it must also go back far enough. A week of
+        # slack covers a start on a weekend or holiday, which has no rate.
+        covers_start = cdi_from is not None and cdi_from <= start + timedelta(days=7)
+        if CDI not in loaded or _day(loaded[CDI]) != today or not covers_start:
             missing.append(CDI)
         return missing
 
     def missing(self, start: date) -> list[str]:
         with Session(self._engine) as session:
             loaded = self._loaded(session)
-        return self._missing_price_periods(loaded, start) + self._missing_benchmarks(loaded, start)
+            cdi_from = session.scalar(
+                select(func.min(BenchmarkValue.date)).where(BenchmarkValue.series == CDI)
+            )
+        return self._missing_price_periods(loaded, start) + self._missing_benchmarks(
+            loaded, start, cdi_from
+        )
 
     def is_synced(self, start: date) -> bool:
         return not self.missing(start)

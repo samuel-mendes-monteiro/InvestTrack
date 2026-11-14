@@ -10,7 +10,7 @@ that rerun, so the page always shows data that includes the change.
 """
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pandas as pd
@@ -26,6 +26,9 @@ OP_TYPES = {"Compra": "BUY", "Venda": "SELL"}
 OP_LABELS = {v: k for k, v in OP_TYPES.items()}
 INCOME_TYPES = {"Dividendo": "DIVIDEND", "JCP": "JCP", "Rendimento (FII)": "DISTRIBUTION"}
 INCOME_LABELS = {v: k for k, v in INCOME_TYPES.items()}
+FI_PRODUCTS = ["CDB", "LCI", "LCA"]
+FI_INDEXERS = {"% do CDI": "CDI", "Prefixado": "PRE"}
+FI_STATUS = {"ACTIVE": "Aplicado", "REDEEMED": "Resgatado", "MATURED": "Vencido"}
 STOCK_EVENT_LABELS = {
     "SPLIT": "Desdobramento",
     "REVERSE_SPLIT": "Grupamento",
@@ -157,6 +160,57 @@ def on_delete_bonus_cost(bonus: dict) -> None:
     flash("success", f"Custo atribuído de {bonus_label(bonus)} removido.")
 
 
+def fi_rate(f: dict) -> str:
+    """'110% do CDI' or '12,5% a.a.'"""
+    rate = quantity(f["rate"])
+    return f"{rate}% do CDI" if f["indexer"] == "CDI" else f"{rate}% a.a."
+
+
+def fi_label(f: dict) -> str:
+    return f"#{f['id']} · {f['name']} · {fi_rate(f)} · {brl(f['amount'])}"
+
+
+def on_create_fixed_income() -> None:
+    s = st.session_state
+    try:
+        if not s.fi_name.strip():
+            raise ValueError("informe o nome")
+        payload = {
+            "name": s.fi_name.strip(),
+            "product": s.fi_product,
+            "indexer": FI_INDEXERS[s.fi_indexer],
+            "rate": str(field_decimal("Taxa", s.fi_rate)),
+            "start": s.fi_start.isoformat(),
+            "maturity": s.fi_maturity.isoformat(),
+            "amount": str(field_decimal("Valor aplicado", s.fi_amount)),
+        }
+        api.create_fixed_income(payload)
+    except (ValueError, ApiError) as e:
+        flash("error", f"Aplicação não registrada: {e}")
+        return
+    flash("success", f"{payload['name']} registrado.")
+    for key in ("fi_name", "fi_rate", "fi_amount"):
+        s[key] = ""
+
+
+def on_redeem(investment_id: int, day: date | None) -> None:
+    try:
+        api.redeem_fixed_income(investment_id, day.isoformat() if day else None)
+    except ApiError as e:
+        flash("error", f"Resgate não registrado: {e}")
+        return
+    flash("success", "Resgate registrado." if day else "Resgate desfeito.")
+
+
+def on_delete_fixed_income(investment_id: int) -> None:
+    try:
+        api.delete_fixed_income(investment_id)
+    except ApiError as e:
+        flash("error", f"Não foi possível apagar: {e}")
+        return
+    flash("success", f"Aplicação #{investment_id} apagada.")
+
+
 def on_create_income() -> None:
     s = st.session_state
     try:
@@ -235,7 +289,7 @@ open_positions = [p for p in portfolio["positions"] if Decimal(p["quantity"]) !=
 # (st.tabs would jump back to the first tab after every interaction).
 view = st.segmented_control(
     "Visão",
-    ["Carteira", "Rentabilidade", "Operações", "Proventos"],
+    ["Carteira", "Rentabilidade", "Operações", "Proventos", "Renda fixa"],
     key="view",
     default="Carteira",
     label_visibility="collapsed",
@@ -243,17 +297,32 @@ view = st.segmented_control(
 
 # --- portfolio view ----------------------------------------------------------
 
-if view not in ("Rentabilidade", "Operações", "Proventos"):
-    if not portfolio["positions"]:
+if view not in ("Rentabilidade", "Operações", "Proventos", "Renda fixa"):
+    fixed_total = Decimal(totals["fixed_income"])
+    if not portfolio["positions"] and not fixed_total:
         st.info("Nenhuma operação ainda. Registre a primeira compra na barra lateral.")
     else:
         c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Patrimônio", brl(totals["current_value"]))
-        c2.metric("Investido", brl(totals["invested"]))
+        net_worth = (
+            None
+            if totals["current_value"] is None
+            else Decimal(totals["current_value"]) + fixed_total
+        )
+        c1.metric(
+            "Patrimônio",
+            brl(net_worth),
+            help=f"Ações, FIIs e ETFs, mais {brl(fixed_total)} em renda fixa (valor líquido).",
+        )
+        c2.metric(
+            "Investido em ações",
+            brl(totals["invested"]),
+            help="Custo das posições abertas de ações, FIIs e ETFs, sem a renda fixa.",
+        )
         c3.metric(
-            "Resultado",
+            "Resultado em ações",
             brl(totals["result"]),
             delta=pct(totals["result_pct"]) if totals["result_pct"] is not None else None,
+            help="Valor atual menos o custo das posições abertas, sem a renda fixa.",
         )
         c4.metric(
             "Lucro realizado",
@@ -300,13 +369,19 @@ if view not in ("Rentabilidade", "Operações", "Proventos"):
         st.subheader("Distribuição")
         col_chart, _ = st.columns([1, 1])  # half width: a pie doesn't need more
         with col_chart:
-            valued = [p for p in open_positions if p["current_value"] is not None]
+            valued = [
+                (p["ticker"], p["current_value"])
+                for p in open_positions
+                if p["current_value"] is not None
+            ]
+            if fixed_total:
+                valued.append(("Renda fixa", fixed_total))
             if valued:
                 chart_data = pd.DataFrame(
                     {
-                        "Ticker": [p["ticker"] for p in valued],
+                        "Ticker": [name for name, _ in valued],
                         # float only for drawing: no calculation depends on it
-                        "Valor": [float(p["current_value"]) for p in valued],
+                        "Valor": [float(value) for _, value in valued],
                     }
                 )
                 fig = px.pie(chart_data, names="Ticker", values="Valor", hole=0.45)
@@ -480,6 +555,119 @@ elif view == "Operações":
                 "A posição é recalculada automaticamente. Se apagar a operação "
                 "deixar uma venda posterior sem ações, a API recusa."
             )
+
+# --- fixed income view -------------------------------------------------------
+
+elif view == "Renda fixa":
+    try:
+        investments = api.fixed_income()
+    except ApiError as e:
+        st.error(str(e))
+        st.stop()
+
+    with st.expander("Nova aplicação", expanded=not investments):
+        with st.form("new_fixed_income"):
+            c1, c2, c3 = st.columns(3)
+            c1.text_input("Nome", key="fi_name", placeholder="CDB Banco X")
+            c1.selectbox("Produto", FI_PRODUCTS, key="fi_product")
+            c2.radio("Indexador", list(FI_INDEXERS), key="fi_indexer", horizontal=True)
+            c2.text_input(
+                "Taxa (%)",
+                key="fi_rate",
+                placeholder="110",
+                help="% do CDI (ex.: 110) ou taxa ao ano, se prefixado (ex.: 12,5).",
+            )
+            c3.date_input(
+                "Data da aplicação",
+                key="fi_start",
+                value=date.today(),
+                max_value=date.today(),
+                format="DD/MM/YYYY",
+            )
+            c3.date_input(
+                "Vencimento",
+                key="fi_maturity",
+                value=date.today() + timedelta(days=365),
+                format="DD/MM/YYYY",
+            )
+            c1.text_input("Valor aplicado (R$)", key="fi_amount", placeholder="5.000,00")
+            st.form_submit_button("Registrar", type="primary", on_click=on_create_fixed_income)
+
+    if not investments:
+        st.info("Nenhuma aplicação de renda fixa registrada.")
+    else:
+        active = [f for f in investments if f["status"] == "ACTIVE"]
+        if any(f["as_of"] is None for f in investments):
+            st.info("Aguardando o histórico do CDI. Atualize a página em instantes.", icon="⏳")
+
+        def total(key):
+            return sum(Decimal(f[key]) for f in active if f[key] is not None)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Aplicado", brl(total("amount")))
+        c2.metric("Valor bruto", brl(total("gross")))
+        c3.metric(
+            "Valor líquido",
+            brl(total("net")),
+            help="Se resgatasse hoje: já descontados IOF e IR. LCI e LCA são isentas.",
+        )
+
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "#": f["id"],
+                        "Nome": f["name"],
+                        "Produto": f["product"],
+                        "Taxa": fi_rate(f),
+                        "Aplicação": date.fromisoformat(f["start"]).strftime("%d/%m/%Y"),
+                        "Vencimento": date.fromisoformat(f["maturity"]).strftime("%d/%m/%Y"),
+                        "Aplicado": brl(f["amount"]),
+                        "Bruto": brl(f["gross"]),
+                        "IOF + IR": brl(
+                            Decimal(f["iof"]) + Decimal(f["ir"]) if f["ir"] is not None else None
+                        ),
+                        "Líquido": brl(f["net"]),
+                        "Rent. bruta": pct(f["gross_return"]),
+                        "Situação": FI_STATUS[f["status"]],
+                    }
+                    for f in investments
+                ]
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        st.caption(
+            "Valores do último dia útil com CDI publicado. O IR é regressivo pelo tempo "
+            "aplicado (22,5% até 180 dias, 20% até 360, 17,5% até 720 e 15% depois), e o IOF "
+            "incide em resgates com menos de 30 dias."
+        )
+
+        with st.expander("Resgatar ou apagar"):
+            options = {fi_label(f): f for f in investments}
+            chosen = options[st.selectbox("Aplicação", list(options), key="fi_chosen")]
+            day = st.date_input(
+                "Data do resgate",
+                key="fi_redeem_date",
+                value=date.today(),
+                max_value=date.today(),
+                format="DD/MM/YYYY",
+            )
+            c1, c2, c3, _ = st.columns([1, 1, 1, 2])
+            c1.button("Resgatar", type="primary", on_click=on_redeem, args=(chosen["id"], day))
+            c2.button(
+                "Desfazer resgate",
+                disabled=chosen["redeemed_on"] is None,
+                on_click=on_redeem,
+                args=(chosen["id"], None),
+            )
+            c3.button(
+                "Apagar",
+                key="fi_delete",
+                on_click=on_delete_fixed_income,
+                args=(chosen["id"],),
+            )
+            st.caption("O resgate é sempre do valor total da aplicação.")
 
 # --- income view -------------------------------------------------------------
 

@@ -218,3 +218,19 @@ def test_performance_request():
     client, session = client_with(fake_response(200, '{"twr": 0.1, "points": []}'))
     assert client.performance()["twr"] == Decimal("0.1")
     session.request.assert_called_once_with("GET", "http://api.test/performance", timeout=15.0)
+
+
+def test_redeem_fixed_income_request():
+    client, session = client_with(fake_response(200, "{}"))
+    client.redeem_fixed_income(3, None)
+    session.request.assert_called_once_with(
+        "PUT", "http://api.test/fixed-income/3/redemption", timeout=15.0, json={"redeemed_on": None}
+    )
+
+
+def test_fixed_income_errors_are_translated():
+    body = (
+        '{"detail": {"code": "INVALID_FIXED_INCOME",'
+        ' "message": "maturity must be after the start date"}}'
+    )
+    assert api_error_for(422, body) == "O vencimento deve ser depois da aplicação."

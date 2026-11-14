@@ -24,6 +24,7 @@ from investtrack.b3 import B3Client
 from investtrack.brapi import BrapiClient
 from investtrack.db import create_db_engine, init_db
 from investtrack.events import EventSource, StoredEvents
+from investtrack.fixed_income import FixedIncome, daily_series, value_on
 from investtrack.income import (
     Income,
     IncomeWithoutPositionError,
@@ -38,6 +39,8 @@ from investtrack.prices import CachedPriceProvider, PriceProvider
 from investtrack.schemas import (
     BonusCostIn,
     ErrorOut,
+    FixedIncomeCreate,
+    FixedIncomeOut,
     IncomeCreate,
     IncomeOut,
     MonthlyIncomeOut,
@@ -48,6 +51,7 @@ from investtrack.schemas import (
     PortfolioOut,
     PortfolioTotals,
     PositionOut,
+    RedeemIn,
     StockEventOut,
 )
 
@@ -137,6 +141,50 @@ def all_incomes(session: Session, events: EventSource) -> list[tuple[int | None,
     return sorted(manual + computed, key=lambda pair: (pair[1].date, pair[1].ticker))
 
 
+def business_days(market: MarketDataSource, start: date) -> tuple[list[date], dict]:
+    """Business days until the last close, and the CDI rates since `start`.
+
+    The CDI has a rate only on business days, but is published a day late;
+    the Ibovespa adds the last trading day, whose value needs only the rates
+    of the days before it.
+    """
+    cdi = market.series(CDI, start)
+    ibov = market.series(IBOV, start)
+    days = sorted(d for d in set(cdi) | set(ibov) if d <= market.last_day())
+    return days, cdi
+
+
+def fixed_income_to_out(
+    record, investment: FixedIncome, days: list[date], cdi: dict
+) -> FixedIncomeOut:
+    last_day = days[-1] if days else None
+    if investment.redeemed_on:
+        status = "REDEEMED"
+    elif last_day is not None and investment.maturity <= last_day:
+        status = "MATURED"
+    else:
+        status = "ACTIVE"
+    valuation = value_on(investment, investment.end, days, cdi) if days else None
+    return FixedIncomeOut(
+        id=record.id,
+        name=investment.name,
+        product=investment.product,
+        indexer=investment.indexer,
+        rate=investment.rate,
+        start=investment.start,
+        maturity=investment.maturity,
+        amount=investment.amount,
+        redeemed_on=investment.redeemed_on,
+        status=status,
+        as_of=valuation.day if valuation else None,
+        gross=valuation.gross if valuation else None,
+        iof=valuation.iof if valuation else None,
+        ir=valuation.ir if valuation else None,
+        net=valuation.net if valuation else None,
+        gross_return=(valuation.gross / investment.amount - 1) * 100 if valuation else None,
+    )
+
+
 def received(incomes: list[tuple[int | None, Income]]) -> list[Income]:
     today = date.today()
     return [i for _, i in incomes if i.date <= today]
@@ -180,7 +228,7 @@ def create_app(
     app = FastAPI(
         title="InvestTrack API",
         description="Portfolio tracker for the Brazilian stock market (B3).",
-        version="0.3.0",
+        version="0.4.0",
         lifespan=lifespan,
     )
 
@@ -349,7 +397,13 @@ def create_app(
             raise api_error(404, "INCOME_NOT_FOUND", e) from e
 
     @app.get("/portfolio", tags=["portfolio"])
-    def get_portfolio(session: SessionDep, prices: PricesDep, events: EventsDep) -> PortfolioOut:
+    def get_portfolio(
+        session: SessionDep,
+        prices: PricesDep,
+        events: EventsDep,
+        market: MarketDep,
+        background: BackgroundTasks,
+    ) -> PortfolioOut:
         positions: list[PositionOut] = []
         total_invested = Decimal("0")
         total_value: Decimal | None = Decimal("0")
@@ -408,8 +462,92 @@ def create_app(
                 realized_profit=total_realized,
                 income=sum(income.values(), Decimal("0")),
                 income_pending=pending,
+                fixed_income=sum(
+                    (
+                        f.net
+                        for f in list_fixed_income(session, market, background)
+                        if f.status == "ACTIVE" and f.net is not None
+                    ),
+                    Decimal("0"),
+                ),
             ),
         )
+
+    def list_fixed_income(
+        session: Session, market: MarketDataSource, background: BackgroundTasks
+    ) -> list[FixedIncomeOut]:
+        records = repository.list_fixed_income(session)
+        if not records:
+            return []
+        start = min(r.start for r in records)
+        if not market.syncing and not market.is_synced(start):
+            background.add_task(market.sync, start)
+        days, cdi = business_days(market, start)
+        return [
+            fixed_income_to_out(r, repository.fixed_income_to_domain(r), days, cdi) for r in records
+        ]
+
+    @app.post(
+        "/fixed-income",
+        status_code=status.HTTP_201_CREATED,
+        tags=["fixed income"],
+        responses={422: {"model": ErrorOut, "description": "Invalid data"}},
+    )
+    def create_fixed_income(
+        payload: FixedIncomeCreate,
+        session: SessionDep,
+        market: MarketDep,
+        background: BackgroundTasks,
+    ) -> FixedIncomeOut:
+        try:
+            investment = FixedIncome(**payload.model_dump())
+        except ValueError as e:
+            raise api_error(422, "INVALID_FIXED_INCOME", e) from e
+        record = repository.add_fixed_income(session, investment)
+        if not market.syncing and not market.is_synced(investment.start):
+            background.add_task(market.sync, investment.start)
+        days, cdi = business_days(market, investment.start)
+        return fixed_income_to_out(record, investment, days, cdi)
+
+    @app.get("/fixed-income", tags=["fixed income"])
+    def get_fixed_income(
+        session: SessionDep, market: MarketDep, background: BackgroundTasks
+    ) -> list[FixedIncomeOut]:
+        """Each investment valued at its last day (today, redemption or maturity)."""
+        return list_fixed_income(session, market, background)
+
+    @app.put(
+        "/fixed-income/{investment_id}/redemption",
+        tags=["fixed income"],
+        responses={
+            404: {"model": ErrorOut, "description": "Not found"},
+            422: {"model": ErrorOut, "description": "Date outside the investment period"},
+        },
+    )
+    def redeem_fixed_income(
+        investment_id: int, payload: RedeemIn, session: SessionDep, market: MarketDep
+    ) -> FixedIncomeOut:
+        """Early redemption (the whole investment), or null to undo it."""
+        try:
+            record = repository.redeem_fixed_income(session, investment_id, payload.redeemed_on)
+        except repository.FixedIncomeNotFoundError as e:
+            raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
+        except ValueError as e:
+            raise api_error(422, "INVALID_FIXED_INCOME", e) from e
+        days, cdi = business_days(market, record.start)
+        return fixed_income_to_out(record, repository.fixed_income_to_domain(record), days, cdi)
+
+    @app.delete(
+        "/fixed-income/{investment_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["fixed income"],
+        responses={404: {"model": ErrorOut, "description": "Not found"}},
+    )
+    def delete_fixed_income(investment_id: int, session: SessionDep) -> None:
+        try:
+            repository.delete_fixed_income(session, investment_id)
+        except repository.FixedIncomeNotFoundError as e:
+            raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
 
     @app.get("/performance", tags=["portfolio"])
     def performance(
@@ -421,7 +559,10 @@ def create_app(
         missing, it is downloaded in the background and `syncing` is true.
         """
         operations, stock = repository.operations_and_stock_events(session, events)
-        if not operations:
+        investments = [
+            repository.fixed_income_to_domain(r) for r in repository.list_fixed_income(session)
+        ]
+        if not operations and not investments:
             return PerformanceOut(
                 syncing=False,
                 start=None,
@@ -432,7 +573,7 @@ def create_app(
                 pct_of_cdi=None,
                 points=[],
             )
-        start = min(op.date for op in operations)
+        start = min([op.date for op in operations] + [i.start for i in investments])
         syncing = market.syncing
         if not syncing and not market.is_synced(start):
             background.add_task(market.sync, start)
@@ -448,7 +589,10 @@ def create_app(
             if start <= d <= last_day
         )
         incomes = [i for i in received(all_incomes(session, events)) if i.date <= last_day]
-        history = portfolio_history(operations, days, closes, stock, incomes)
+        fi_values, fi_flows = daily_series(investments, *business_days(market, start))
+        history = portfolio_history(
+            operations, days, closes, stock, incomes, other_values=fi_values, other_flows=fi_flows
+        )
         if not history:
             return PerformanceOut(
                 syncing=syncing,

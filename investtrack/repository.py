@@ -14,8 +14,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, contains_eager
 
 from investtrack.events import NO_EVENTS, EventSource
+from investtrack.fixed_income import FixedIncome
 from investtrack.income import Income, check_incomes, incomes_from_events
-from investtrack.models import Asset, AssetType, BonusCost, IncomeRecord, OperationRecord
+from investtrack.models import (
+    Asset,
+    AssetType,
+    BonusCost,
+    FixedIncomeRecord,
+    IncomeRecord,
+    OperationRecord,
+)
 from investtrack.portfolio import (
     AppliedStockEvent,
     Operation,
@@ -283,3 +291,69 @@ def computed_incomes(session: Session, events: EventSource) -> list[Income]:
         ticker_events = events.events_for(ticker, asset_type)
         incomes += incomes_from_events(ops, ticker_events.income, stock_events=ticker_events.stock)
     return incomes
+
+
+# --- fixed income ------------------------------------------------------------
+
+
+class FixedIncomeNotFoundError(LookupError):
+    def __init__(self, investment_id: int):
+        self.investment_id = investment_id
+        super().__init__(f"fixed income {investment_id} not found")
+
+
+def fixed_income_to_domain(record: FixedIncomeRecord) -> FixedIncome:
+    return FixedIncome(
+        name=record.name,
+        product=record.product,
+        indexer=record.indexer,
+        rate=record.rate,
+        start=record.start,
+        maturity=record.maturity,
+        amount=record.amount,
+        redeemed_on=record.redeemed_on,
+    )
+
+
+def list_fixed_income(session: Session) -> list[FixedIncomeRecord]:
+    stmt = select(FixedIncomeRecord).order_by(FixedIncomeRecord.start, FixedIncomeRecord.id)
+    return list(session.scalars(stmt))
+
+
+def add_fixed_income(session: Session, investment: FixedIncome) -> FixedIncomeRecord:
+    record = FixedIncomeRecord(
+        name=investment.name,
+        product=investment.product,
+        indexer=investment.indexer,
+        rate=investment.rate,
+        start=investment.start,
+        maturity=investment.maturity,
+        amount=investment.amount,
+        redeemed_on=investment.redeemed_on,
+    )
+    session.add(record)
+    session.commit()
+    return record
+
+
+def _get_fixed_income(session: Session, investment_id: int) -> FixedIncomeRecord:
+    record = session.get(FixedIncomeRecord, investment_id)
+    if record is None:
+        raise FixedIncomeNotFoundError(investment_id)
+    return record
+
+
+def redeem_fixed_income(
+    session: Session, investment_id: int, day: date | None
+) -> FixedIncomeRecord:
+    """Early redemption on `day` (None undoes it). Validated by the domain class."""
+    record = _get_fixed_income(session, investment_id)
+    replace(fixed_income_to_domain(record), redeemed_on=day)  # raises if out of range
+    record.redeemed_on = day
+    session.commit()
+    return record
+
+
+def delete_fixed_income(session: Session, investment_id: int) -> None:
+    session.delete(_get_fixed_income(session, investment_id))
+    session.commit()

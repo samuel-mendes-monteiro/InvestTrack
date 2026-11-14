@@ -30,6 +30,19 @@ class ApiClient:
     def portfolio(self) -> dict:
         return self._request("GET", "/portfolio")
 
+    def fixed_income(self) -> list[dict]:
+        return self._request("GET", "/fixed-income")
+
+    def create_fixed_income(self, payload: dict) -> dict:
+        return self._request("POST", "/fixed-income", json=payload)
+
+    def redeem_fixed_income(self, investment_id: int, day: str | None) -> dict:
+        url = f"/fixed-income/{investment_id}/redemption"
+        return self._request("PUT", url, json={"redeemed_on": day})
+
+    def delete_fixed_income(self, investment_id: int) -> None:
+        self._request("DELETE", f"/fixed-income/{investment_id}")
+
     def performance(self) -> dict:
         return self._request("GET", "/performance")
 
@@ -91,6 +104,21 @@ FIELD_NAMES = {
     "amount": "Valor bruto",
     "tax": "IR retido",
     "unit_cost": "Custo atribuído",
+    "name": "Nome",
+    "product": "Produto",
+    "indexer": "Indexador",
+    "rate": "Taxa",
+    "start": "Data da aplicação",
+    "maturity": "Vencimento",
+    "redeemed_on": "Data do resgate",
+}
+
+# The domain's validation messages for fixed income, in Portuguese.
+FIXED_INCOME_MESSAGES = {
+    "maturity must be after the start date": "O vencimento deve ser depois da aplicação.",
+    "redemption must be between the start and the maturity": (
+        "A data do resgate deve estar entre a aplicação e o vencimento."
+    ),
 }
 
 
@@ -131,6 +159,10 @@ def _domain_error(d: dict) -> str:
                 f"Apagar essa compra deixaria proventos de {d['ticker']} recebidos "
                 "antes de qualquer compra. Apague os proventos primeiro."
             )
+        case "INVALID_FIXED_INCOME":
+            return FIXED_INCOME_MESSAGES.get(d.get("message"), d.get("message", ""))
+        case "FIXED_INCOME_NOT_FOUND":
+            return "Aplicação não encontrada. Talvez ela já tenha sido apagada."
         case "STOCK_EVENT_NOT_FOUND":
             return "Não há bonificação desse ativo nessa data."
         case "INCOME_NOT_FOUND":

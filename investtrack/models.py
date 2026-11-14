@@ -14,6 +14,7 @@ from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from investtrack.db import Base, SafeDecimal
+from investtrack.fixed_income import Indexer, Product
 from investtrack.income import IncomeType
 from investtrack.portfolio import OpType, StockEventType
 
@@ -207,3 +208,19 @@ class HistoryLoad(Base):
 
     period: Mapped[str] = mapped_column(String(30), primary_key=True)
     loaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class FixedIncomeRecord(Base):
+    """A CDB, LCI or LCA. Its value is never stored: it comes from the CDI."""
+
+    __tablename__ = "fixed_income"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    product: Mapped[Product] = mapped_column(Enum(Product, native_enum=False, length=10))
+    indexer: Mapped[Indexer] = mapped_column(Enum(Indexer, native_enum=False, length=10))
+    rate: Mapped[Decimal] = mapped_column(SafeDecimal)
+    start: Mapped[date] = mapped_column(Date)
+    maturity: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(SafeDecimal)
+    redeemed_on: Mapped[date | None] = mapped_column(Date)

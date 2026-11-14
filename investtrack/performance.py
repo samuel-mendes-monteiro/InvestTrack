@@ -53,14 +53,21 @@ def portfolio_history(
     closes: dict[str, dict[date, Decimal]],
     stock_events: Iterable[StockEvent] = (),
     incomes: Iterable[Income] = (),
+    other_values: dict[date, Decimal] | None = None,
+    other_flows: dict[date, Decimal] | None = None,
 ) -> list[DailyValue]:
     """Value and cumulative TWR at the close of every trading day.
+
+    other_values and other_flows add assets valued elsewhere, such as fixed
+    income: their value at each close and the money put in or taken out.
 
     Missing closes (a day without trades in that asset) use the last known
     close, and before the first known close, the last trade price: an
     illiquid asset keeps its value instead of dropping to zero.
     """
-    if not operations or not trading_days:
+    other_values = other_values or {}
+    other_flows = other_flows or {}
+    if not (operations or other_flows) or not trading_days:
         return []
     trading_days = sorted(trading_days)
     stock_events = list(stock_events)
@@ -79,7 +86,10 @@ def portfolio_history(
         if day is not None:
             paid[day] += income.net
 
-    first_day = _next_trading_day(min(op.date for op in operations), trading_days)
+    for day, flow in other_flows.items():
+        flows[day] += flow
+    starts = [op.date for op in operations] + list(other_flows)
+    first_day = _next_trading_day(min(starts), trading_days)
     last_price: dict[str, Decimal] = {}
     has_close: set[str] = set()
     previous_value = ZERO
@@ -104,7 +114,7 @@ def portfolio_history(
                 quantity_on(ops, day, stock_events) * last_price.get(ticker, ZERO)
                 for ticker, ops in ops_by_ticker.items()
             ),
-            ZERO,
+            other_values.get(day, ZERO),
         )
         flow, income = flows[day], paid[day]
 

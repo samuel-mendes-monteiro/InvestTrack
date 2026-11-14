@@ -22,6 +22,7 @@ InvestTrack is a web app where you record your buy and sell trades and get back:
 - realized and unrealized profit/loss, in R$ and in %
 - dividends, JCP and FII distributions, **computed automatically** from what B3 publishes and what you owned on each record date, including income still to be paid
 - how your portfolio is split across assets
+- fixed income (CDB, LCI, LCA) at % of CDI or pre-fixed rates, valued daily with IOF and regressive income tax
 - your **time-weighted return** since the first trade, compared with the CDI and the Ibovespa
 
 Quotes from B3 are fetched automatically from [brapi.dev](https://brapi.dev), and income events from B3's own website. Invalid operations, such as selling more shares than you own on that date, are refused with a clear message:
@@ -61,6 +62,7 @@ flowchart LR
 | [`investtrack/events.py`](investtrack/events.py) | Stores B3 events (income, splits, bonus shares), synced once a day, with fallback to what is stored |
 | [`investtrack/b3.py`](investtrack/b3.py) | The only module that knows B3's corporate events URLs and JSON format |
 | [`investtrack/performance.py`](investtrack/performance.py) | Time-weighted return and benchmarks (CDI, Ibovespa). Pure |
+| [`investtrack/fixed_income.py`](investtrack/fixed_income.py) | CDB, LCI and LCA: value from the CDI or a fixed rate, IOF and income tax. Pure |
 | [`investtrack/market_data.py`](investtrack/market_data.py) | Stores daily prices, Ibovespa and CDI; downloads only what is missing, in the background |
 | [`investtrack/history.py`](investtrack/history.py) | Clients and parsers for COTAHIST files, the Ibovespa table and the CDI series |
 | [`investtrack/repository.py`](investtrack/repository.py) | Saves and reads trades; validates every change through the calculation core |
@@ -109,6 +111,18 @@ net   = gross − tax withheld   (15% on JCP; dividends and FII distributions: n
 - Since it is recalculated from the trades, fixing an old trade fixes the income too.
 - For what B3 doesn't publish (BDRs, income older than the history B3 shows), income can be entered manually, as the total shown in the broker statement.
 
+**Fixed income** has no market price: its value comes from a formula, using the CDI already downloaded for the benchmarks.
+
+```
+% of CDI:   value = amount × Π (1 + CDI_day × percentage)      (each business day)
+pre-fixed:  value = amount × (1 + annual_rate) ^ (business_days / 252)
+```
+
+- Business days come from the CDI series itself: the Central Bank publishes a rate only on business days, so it doubles as the official calendar.
+- If redeemed today, a CDB pays IOF on the gain within 30 days (96% on day 1 down to 0% on day 30) and income tax on the rest of the gain: 22.5% up to 180 days, 20% up to 360, 17.5% up to 720 and 15% after that. LCI and LCA are tax exempt.
+- Applying is an inflow and redeeming an outflow, so fixed income joins the portfolio's value and its TWR. An LCI at 100% of the CDI earns exactly the CDI.
+- Redemptions are of the whole investment; partial redemptions and IPCA+ are not supported yet.
+
 **Performance** is the time-weighted return (TWR), which measures how the assets did regardless of when money was put in or taken out:
 
 ```
@@ -140,6 +154,7 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 - **The first history download runs in the background.** A year of trades needs about 100 MB (one file per month), so `/performance` answers at once with what is stored, starts the download as a FastAPI background task and returns `syncing: true`; a lock keeps two downloads from running together. After that, each day adds one 550 KB file.
 - **What to download is derived, not scheduled.** The periods needed (closed months as one file, the current month day by day, until yesterday) are compared with the ones recorded as loaded. Weekdays without a file are holidays and are recorded too. Every ticker of each day is stored (about 30,000 prices a month), so a ticker added later already has its history.
 - **One injectable clock.** Market data uses the same clock for "today" and for load timestamps. Mixing a fake "today" with the real clock made tests pass only on the day they were written.
+- **The CDI history must reach back to the oldest investment.** Being downloaded today is not enough: registering a CDB from last year makes the CDI be fetched again from that date.
 - **New tables, no migration.** Income has no quantity or price, so it isn't stored as a kind of trade. Adding tables is the safest schema change: existing databases get them on startup and no existing column changes.
 - **The frontend never imports the backend.** It only talks to the API over HTTP, so the Streamlit UI can later be replaced by React without touching the backend.
 
@@ -149,7 +164,7 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 pytest --cov
 ```
 
-271 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
+315 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
 
 The calculation tests include the worked example used to design the rules:
 
@@ -211,6 +226,10 @@ streamlit run frontend/app.py
 | `PUT` | `/stock-events/{ticker}/{date}/unit-cost` | Attributed cost of a bonus event (404 if there is no bonus on that date) |
 | `DELETE` | `/stock-events/{ticker}/{date}/unit-cost` | Back to zero cost |
 | `GET` | `/portfolio` | Positions, live prices, income received and portfolio totals |
+| `POST` | `/fixed-income` | Register a CDB, LCI or LCA |
+| `GET` | `/fixed-income` | Each investment with gross value, IOF, income tax and net value |
+| `PUT` | `/fixed-income/{id}/redemption` | Early redemption on a date (`null` undoes it) |
+| `DELETE` | `/fixed-income/{id}` | Delete an investment |
 | `GET` | `/performance` | Daily TWR, CDI and Ibovespa since the first trade (downloads missing history in the background) |
 | `GET` | `/health` | Health check |
 
@@ -235,7 +254,8 @@ streamlit run frontend/app.py
 - [x] Stock splits, reverse splits and bonus shares
 - [x] Attributed cost of bonus shares (*custo atribuído*)
 - [x] **v0.3:** historical performance with time-weighted return (TWR), compared with CDI and Ibovespa
-- [ ] **v0.4:** fixed income (CDB, LCI, LCA)
+- [x] **v0.4:** fixed income (CDB, LCI, LCA)
+- [ ] Partial redemptions and IPCA+ fixed income
 - [ ] **v0.5:** login and multiple users
 - [ ] **v0.6:** import B3 trade statements
 - [ ] **v1.0:** React frontend and cloud deployment

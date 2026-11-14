@@ -136,3 +136,10 @@ def test_sync_running_is_not_started_twice(engine):
         assert not m.is_synced(date(2026, 11, 12))
     finally:
         m._lock.release()
+
+
+def test_cdi_is_fetched_again_when_the_start_moves_back(engine):
+    m = market(engine, fake_cotahist())
+    m.sync(date(2026, 10, 1))  # the fake CDI starts on Oct 1
+    assert "CDI" not in m.missing(date(2026, 10, 1))
+    assert "CDI" in m.missing(date(2025, 6, 2))  # loaded today, but not that far back

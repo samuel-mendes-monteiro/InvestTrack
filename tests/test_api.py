@@ -22,6 +22,7 @@ def client():
         engine=create_db_engine("sqlite://"),
         price_provider=PRICES,
         events=StaticEvents(),
+        market_data=StaticMarketData(),
     )
     with TestClient(app) as c:  # "with" runs the startup/shutdown (lifespan)
         yield c
@@ -601,3 +602,108 @@ def test_missing_history_is_downloaded_in_the_background():
         body = client.get("/performance").json()
     assert body["syncing"] is True
     assert market.synced_from == [MON]  # TestClient runs background tasks after the response
+
+
+# --- fixed income ------------------------------------------------------------
+
+WED = date(2026, 3, 4)
+ONE_PERCENT_A_DAY = StaticMarketData(
+    series={
+        "CDI": {MON: Decimal("1"), TUE: Decimal("1")},  # Wednesday's rate not published yet
+        "IBOV": {MON: Decimal("100"), TUE: Decimal("100"), WED: Decimal("100")},
+    },
+    last_day=WED,
+)
+
+
+def fixed(product="LCI", rate="100", start="2026-03-02", maturity="2027-03-02", **extra):
+    return {
+        "name": "LCI Banco X",
+        "product": product,
+        "indexer": "CDI",
+        "rate": rate,
+        "start": start,
+        "maturity": maturity,
+        "amount": "1000",
+        **extra,
+    }
+
+
+@pytest.fixture
+def fi_client():
+    with performance_client(ONE_PERCENT_A_DAY) as c:
+        yield c
+
+
+def test_create_fixed_income_and_value_it(fi_client):
+    r = fi_client.post("/fixed-income", json=fixed())
+    assert r.status_code == 201
+    body = r.json()
+    assert body["status"] == "ACTIVE"
+    assert body["as_of"] == "2026-03-04"
+    assert body["gross"] == "1020.10"  # 1000 x 1.01 x 1.01
+    assert body["net"] == "1020.10"  # LCI: no tax
+    assert body["gross_return"] == "2.01"
+
+
+def test_cdb_shows_taxes(fi_client):
+    body = fi_client.post("/fixed-income", json=fixed(product="CDB")).json()
+    assert Decimal(body["iof"]) > 0  # redeemed within 30 days
+    assert Decimal(body["ir"]) > 0
+    assert Decimal(body["net"]) < Decimal(body["gross"])
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"maturity": "2026-03-01"},  # before the start
+        {"rate": "0"},
+        {"product": "TESOURO"},
+        {"start": (date.today() + timedelta(days=1)).isoformat()},
+    ],
+)
+def test_invalid_fixed_income_is_rejected(fi_client, changes):
+    assert fi_client.post("/fixed-income", json=fixed(**changes)).status_code == 422
+
+
+def test_domain_error_has_a_code(fi_client):
+    r = fi_client.post("/fixed-income", json=fixed(maturity="2026-03-01"))
+    assert r.json()["detail"]["code"] == "INVALID_FIXED_INCOME"
+
+
+def test_early_redemption_and_undo(fi_client):
+    created = fi_client.post("/fixed-income", json=fixed()).json()
+    url = f"/fixed-income/{created['id']}/redemption"
+
+    redeemed = fi_client.put(url, json={"redeemed_on": "2026-03-03"}).json()
+    assert (redeemed["status"], redeemed["gross"]) == ("REDEEMED", "1010.00")
+
+    undone = fi_client.put(url, json={"redeemed_on": None}).json()
+    assert undone["status"] == "ACTIVE"
+
+    r = fi_client.put(url, json={"redeemed_on": "2026-02-01"})
+    assert r.status_code == 422
+    assert (
+        fi_client.put("/fixed-income/99/redemption", json={"redeemed_on": None}).status_code == 404
+    )
+
+
+def test_delete_fixed_income(fi_client):
+    created = fi_client.post("/fixed-income", json=fixed()).json()
+    assert fi_client.delete(f"/fixed-income/{created['id']}").status_code == 204
+    assert fi_client.get("/fixed-income").json() == []
+    assert fi_client.delete(f"/fixed-income/{created['id']}").status_code == 404
+
+
+def test_portfolio_totals_include_fixed_income_still_invested(fi_client):
+    fi_client.post("/fixed-income", json=fixed())
+    redeemed = fi_client.post("/fixed-income", json=fixed()).json()
+    fi_client.put(f"/fixed-income/{redeemed['id']}/redemption", json={"redeemed_on": "2026-03-03"})
+    assert fi_client.get("/portfolio").json()["totals"]["fixed_income"] == "1020.10"
+
+
+def test_lci_at_100_percent_of_cdi_earns_exactly_the_cdi(fi_client):
+    fi_client.post("/fixed-income", json=fixed())
+    body = fi_client.get("/performance").json()
+    assert body["twr"] == body["cdi"] == "2.01"
+    assert body["pct_of_cdi"] == "100.00"
