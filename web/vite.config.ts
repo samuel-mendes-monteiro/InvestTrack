@@ -11,7 +11,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // API_URL points the proxy at another API, e.g. one on a demo database.
+        target: process.env.API_URL ?? 'http://localhost:8000',
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },

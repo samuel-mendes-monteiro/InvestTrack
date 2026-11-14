@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { brDate, brl, parseDecimal, pct, perShare, quantity } from './format'
+import { brDate, brl, isZero, parseDecimal, pct, perShare, quantity, sumDecimals, todayIso } from './format'
 
 // Same cases as the Streamlit helpers' tests, so both frontends agree.
 describe('brl', () => {
@@ -35,6 +35,17 @@ test('quantity drops trailing zeros', () => {
   expect(quantity('1500.25')).toBe('1.500,25')
 })
 
+test("reads Python's exponent notation, as the API sends some decimals", () => {
+  expect(quantity('0E-8')).toBe('0')
+  expect(quantity('1.5E+3')).toBe('1.500')
+  expect(quantity('25E-3')).toBe('0,025')
+  expect(brl('1E+2')).toBe('R$ 100,00')
+  expect(isZero('0E-8')).toBe(true)
+  expect(isZero('-0.00')).toBe(true)
+  expect(isZero('1E-8')).toBe(false)
+  expect(sumDecimals(['0.1', '0.2', '0E-8', '-1E-1'])).toBe('0.20000000') // keeps the scale, like Decimal
+})
+
 test('perShare keeps up to 8 decimals', () => {
   expect(perShare('0.10245643978')).toBe('R$ 0,10245644')
   expect(perShare('1.5')).toBe('R$ 1,50')
@@ -56,3 +67,11 @@ describe('parseDecimal', () => {
     expect(() => parseDecimal(text)).toThrow('não é um número válido'),
   )
 })
+
+test('todayIso uses the local date, not UTC', () => {
+  expect(todayIso(new Date(2026, 10, 14, 23, 30))).toBe('2026-11-14')
+})
+
+test.each(['1e3', '1E+3'])('people cannot type exponents (%s)', (text) =>
+  expect(() => parseDecimal(text)).toThrow('não é um número válido'),
+)

@@ -4,13 +4,33 @@
 // 0.1 + 0.2 !== 0.3. The API already did the math with Decimal; the frontend
 // only rounds for display, which is done exactly on the digits with BigInt.
 
+// What a person types: no exponent.
 const DECIMAL = /^([+-])?(\d+)(?:\.(\d*))?$/
+// What the API sends: Python's str(Decimal) uses an exponent for some values,
+// e.g. a closed position's quantity, 100.00000000 - 100.00000000, is "0E-8".
+const API_DECIMAL = /^([+-])?(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/
+
+type Parts = { negative: boolean; whole: string; fraction: string }
+
+/** "1.5E+3" -> 1500, "0E-8" -> 0: sign plus plain digits, the exponent applied. */
+function parts(value: string): Parts {
+  const match = API_DECIMAL.exec(value.trim())
+  if (!match) throw new Error(`not a decimal: ${value}`)
+  const [, sign, intDigits, fracDigits = '', exp = '0'] = match
+  const digits = intDigits + fracDigits
+  const point = intDigits.length + Number(exp) // where the decimal point lands
+  const padded = point <= 0 ? '0'.repeat(1 - point) + digits : digits.padEnd(point, '0')
+  const at = point <= 0 ? 1 : point
+  return {
+    negative: sign === '-',
+    whole: padded.slice(0, at).replace(/^0+(?=\d)/, ''),
+    fraction: padded.slice(at),
+  }
+}
 
 /** Round a decimal string to `places` digits, half-even like Python's Decimal. */
 function round(value: string, places: number): { negative: boolean; digits: string } {
-  const match = DECIMAL.exec(value.trim())
-  if (!match) throw new Error(`not a decimal: ${value}`)
-  const [, sign, whole, fraction = ''] = match
+  const { negative: minus, whole, fraction } = parts(value)
   const kept = fraction.slice(0, places).padEnd(places, '0')
   let n = BigInt(whole + kept)
   const rest = fraction.slice(places)
@@ -19,7 +39,7 @@ function round(value: string, places: number): { negative: boolean; digits: stri
     if (rest[0] > '5' || (rest[0] === '5' && !half) || (half && n % 2n === 1n)) n += 1n
   }
   const digits = n.toString().padStart(places + 1, '0')
-  return { negative: sign === '-' && n !== 0n, digits }
+  return { negative: minus && n !== 0n, digits }
 }
 
 function groupThousands(whole: string): string {
@@ -45,18 +65,12 @@ export function pct(value: string | null | undefined): string {
   return (text.startsWith('-') ? text : '+' + text) + '%'
 }
 
-/** Drop trailing zeros: "0.50000000" -> "0,5", "100.00" -> "100". */
-function trimmed(value: string): string {
-  const [whole, fraction = ''] = value.split('.')
-  const rest = fraction.replace(/0+$/, '')
-  return rest ? `${whole}.${rest}` : whole
-}
-
-/** "150" -> "150", "1500.5" -> "1.500,5" (no trailing zeros). */
+/** "150" -> "150", "1500.5" -> "1.500,5", "0E-8" -> "0" (no trailing zeros). */
 export function quantity(value: string): string {
-  const [whole, fraction] = trimmed(value).split('.')
-  const sign = whole.startsWith('-') ? '-' : ''
-  return sign + groupThousands(whole.replace('-', '')) + (fraction ? ',' + fraction : '')
+  const { negative, whole, fraction } = parts(value)
+  const rest = fraction.replace(/0+$/, '')
+  const sign = negative && /[1-9]/.test(whole + rest) ? '-' : ''
+  return sign + groupThousands(whole) + (rest ? ',' + rest : '')
 }
 
 /** Per-share income: "0.10245643978" -> "R$ 0,10245644" (8 decimals at most, 2 at least). */
@@ -83,4 +97,45 @@ export function parseDecimal(text: string): string {
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.') // dots are thousands
   if (!DECIMAL.test(s)) throw new Error(`'${text}' não é um número válido`)
   return s.replace(/^\+/, '')
+}
+
+/**
+ * Today's date in the user's time zone, as "YYYY-MM-DD". Not
+ * toISOString(): that is UTC, so in Brazil after 21h it is already tomorrow.
+ */
+export function todayIso(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+/** "2026-11-14T13:44:43Z" -> "14/11 10:44" in the viewer's time zone. */
+export function localTime(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** True for "0", "0.00", "0E-8": the API's numbers are strings, so `!== 0` doesn't work. */
+export function isZero(value: string): boolean {
+  const { whole, fraction } = parts(value)
+  return !/[1-9]/.test(whole + fraction)
+}
+
+/** Exact sum of decimal strings ("0.1" + "0.2" is "0.3" here, unlike Number). */
+export function sumDecimals(values: string[]): string {
+  const parsed = values.map((v) => {
+    const { negative, whole, fraction } = parts(v)
+    return { sign: negative ? -1n : 1n, whole, fraction }
+  })
+  const scale = Math.max(0, ...parsed.map((p) => p.fraction.length))
+  const total = parsed.reduce((sum, p) => sum + p.sign * BigInt(p.whole + p.fraction.padEnd(scale, '0')), 0n)
+  const digits = (total < 0n ? -total : total).toString().padStart(scale + 1, '0')
+  const whole = digits.slice(0, digits.length - scale)
+  return (total < 0n ? '-' : '') + whole + (scale ? '.' + digits.slice(-scale) : '')
+}
+
+/** 'positive' / 'negative' for a decimal string, for coloring gains and losses. */
+export function toneOf(value: string | null | undefined): 'positive' | 'negative' | undefined {
+  if (value == null || isZero(value)) return undefined
+  return value.startsWith('-') ? 'negative' : 'positive'
 }

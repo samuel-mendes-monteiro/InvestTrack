@@ -1,8 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { NavLink, Navigate, Route, Routes } from 'react-router'
 import { api, call } from './api/client'
+import { keys } from './api/queries'
 import { setToken, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
+import { OperationForm } from './operations/OperationForm'
+import { OperationsPage } from './operations/OperationsPage'
+import { PortfolioPage } from './portfolio/PortfolioPage'
 
 export default function App() {
   const { token, notice } = useSession()
@@ -10,11 +15,18 @@ export default function App() {
   return token ? <Shell key={token} /> : <LoginPage notice={notice} />
 }
 
+// Each screen has its own URL, so reload, back/forward and bookmarks work.
+const PAGES = [
+  { path: '/', label: 'Carteira', element: <PortfolioPage /> },
+  { path: '/operacoes', label: 'Operações', element: <OperationsPage /> },
+]
+
 /** Everything behind the login. */
 function Shell() {
   const queryClient = useQueryClient()
-  const me = useQuery({ queryKey: ['me'], queryFn: () => call(api.GET('/auth/me')) })
+  const me = useQuery({ queryKey: keys.me, queryFn: () => call(api.GET('/auth/me')) })
   const [leaving, setLeaving] = useState(false)
+  const [creating, setCreating] = useState(false)
 
   // Leaving the shell (logout or expired session) empties the cache, so the
   // next person to log in on this browser never sees this one's portfolio.
@@ -33,16 +45,32 @@ function Shell() {
   return (
     <>
       <header className="topbar">
-        <strong>InvestTrack</strong>
+        <strong className="brand">InvestTrack</strong>
+        <nav>
+          {PAGES.map((p) => (
+            <NavLink key={p.path} to={p.path} end>
+              {p.label}
+            </NavLink>
+          ))}
+        </nav>
         <span className="spacer" />
-        {me.data && <span className="muted">{me.data.email}</span>}
+        <button className="primary" onClick={() => setCreating(true)}>
+          Nova operação
+        </button>
+        {me.data && <span className="muted email">{me.data.email}</span>}
         <button onClick={logout} disabled={leaving}>
           Sair
         </button>
       </header>
       <main>
-        <p className="muted">A carteira chega no próximo passo.</p>
+        <Routes>
+          {PAGES.map((p) => (
+            <Route key={p.path} path={p.path} element={p.element} />
+          ))}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
+      {creating && <OperationForm onClose={() => setCreating(false)} />}
     </>
   )
 }
