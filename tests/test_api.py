@@ -843,6 +843,17 @@ def test_register_and_login_errors():
         assert (wrong.status_code, wrong.json()["detail"]["code"]) == (401, "INVALID_CREDENTIALS")
 
 
+def test_too_many_failed_logins():
+    with api_client() as c:
+        wrong = {"email": "ana@example.com", "password": "wrong one"}
+        for _ in range(5):
+            c.post("/auth/login", json=wrong)
+        r = c.post("/auth/login", json=wrong | {"password": "long enough"})
+        assert r.status_code == 429
+        assert r.json()["detail"]["code"] == "TOO_MANY_ATTEMPTS"
+        assert r.headers["Retry-After"] == str(r.json()["detail"]["retry_after"]) == "900"
+
+
 def test_me_and_logout(client):
     assert client.get("/auth/me").json()["email"] == "ana@example.com"
     assert client.post("/auth/logout").status_code == 204

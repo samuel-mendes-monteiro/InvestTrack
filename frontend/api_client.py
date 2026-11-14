@@ -208,6 +208,12 @@ def domain_error(d: dict) -> str:
             )
         case "INVALID_CREDENTIALS":
             return "E-mail ou senha incorretos."
+        case "TOO_MANY_ATTEMPTS":
+            minutes = max(1, -(-int(d["retry_after"]) // 60))  # rounded up
+            return (
+                "Muitas tentativas de login erradas. "
+                f"Tente de novo em {minutes} minuto{'s' if minutes > 1 else ''}."
+            )
         case "EMAIL_TAKEN":
             return "Já existe uma conta com esse e-mail."
         case "WEAK_PASSWORD":

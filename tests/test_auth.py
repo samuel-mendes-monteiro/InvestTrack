@@ -13,6 +13,8 @@ from investtrack.auth import (
     EmailTakenError,
     InvalidCredentialsError,
     InvalidEmailError,
+    LoginThrottle,
+    TooManyAttemptsError,
     WeakPasswordError,
     hash_token,
 )
@@ -150,3 +152,55 @@ def test_first_account_adopts_data_from_before_v05(session, auth):
     owners = session.execute(text("SELECT user_id FROM operations")).scalars().all()
     assert owners == [first.id]
     assert second.id not in owners
+
+
+# --- login throttle ----------------------------------------------------------
+
+
+def fail(session, auth, times, email="ana@x.com", ip="1.1.1.1"):
+    for _ in range(times):
+        with pytest.raises(InvalidCredentialsError):
+            auth.login(session, email, "wrong password", ip)
+
+
+def test_account_is_blocked_after_five_failures_from_one_ip(session, auth, clock):
+    auth.register(session, "ana@x.com", "correct horse")
+    fail(session, auth, 5)
+    with pytest.raises(TooManyAttemptsError) as exc:
+        auth.login(session, "ana@x.com", "correct horse", "1.1.1.1")  # even the right one
+    assert exc.value.retry_after == 15 * 60
+
+    # Someone else's typos don't lock Ana out of her own machine.
+    auth.login(session, "ana@x.com", "correct horse", "2.2.2.2")
+
+    clock.now += timedelta(minutes=15)
+    auth.login(session, "ana@x.com", "correct horse", "1.1.1.1")
+
+
+def test_window_slides(session, auth, clock):
+    fail(session, auth, 4)
+    clock.now += timedelta(minutes=10)
+    fail(session, auth, 1)
+    with pytest.raises(TooManyAttemptsError) as exc:
+        auth.login(session, "ana@x.com", "x", "1.1.1.1")
+    assert exc.value.retry_after == 5 * 60  # when the first four expire
+    clock.now += timedelta(minutes=5)
+    fail(session, auth, 1)  # 2 failures in the window again: allowed
+
+
+def test_success_resets_the_account_count_but_not_the_ip(session, clock):
+    auth = Auth(hasher=FAST, clock=clock, throttle=LoginThrottle(per_ip=5, clock=clock))
+    auth.register(session, "ana@x.com", "correct horse")
+    fail(session, auth, 4)
+    auth.login(session, "ANA@x.com", "correct horse", "1.1.1.1")
+    fail(session, auth, 1)  # account count restarted, so not blocked
+    with pytest.raises(TooManyAttemptsError):  # but the IP has 4 + 1 = 5
+        auth.login(session, "bia@x.com", "anything", "1.1.1.1")
+
+
+def test_one_ip_trying_many_emails_is_blocked(session, auth):
+    for i in range(20):
+        fail(session, auth, 1, email=f"user{i}@x.com")
+    with pytest.raises(TooManyAttemptsError):
+        auth.login(session, "new@x.com", "anything", "1.1.1.1")
+    fail(session, auth, 1, email="new@x.com", ip="2.2.2.2")  # other IPs unaffected

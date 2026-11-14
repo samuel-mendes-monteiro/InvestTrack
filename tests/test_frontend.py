@@ -270,6 +270,13 @@ def test_expired_session_is_its_own_error():
         client.portfolio()
 
 
+def test_too_many_attempts_is_translated():
+    body = '{"detail": {"code": "TOO_MANY_ATTEMPTS", "message": "...", "retry_after": 61}}'
+    assert api_error_for(429, body) == (
+        "Muitas tentativas de login erradas. Tente de novo em 2 minutos."
+    )
+
+
 def test_wrong_password_is_not_a_session_error():
     body = '{"detail": {"code": "INVALID_CREDENTIALS", "message": "..."}}'
     client, _ = client_with(fake_response(401, body))

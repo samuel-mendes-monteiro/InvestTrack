@@ -15,8 +15,10 @@ nothing to guess.
 import hashlib
 import re
 import secrets
+from collections import deque
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from math import ceil
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
@@ -79,13 +81,80 @@ def adopt_legacy_data(session: Session, user_id: int) -> None:
         session.execute(update(model).where(model.user_id.is_(None)).values(user_id=user_id))
 
 
+class TooManyAttemptsError(Exception):
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after  # seconds
+        super().__init__(f"too many failed logins, try again in {retry_after} seconds")
+
+
+class LoginThrottle:
+    """Limits failed logins, so passwords can't be guessed at full speed.
+
+    Two sliding windows of failures (successes don't count):
+    - per (email, IP): stops guessing one account's password. Keyed by the
+      pair, not by email alone: otherwise anyone could lock a victim out just
+      by typing their email wrong on purpose;
+    - per IP: stops one machine from trying a few passwords on many emails.
+
+    Kept in memory: enough for a single server process. Several processes or
+    servers would each count apart, and would need a shared store (Redis).
+    A restart forgets everything, which only gives an attacker a fresh window.
+    """
+
+    def __init__(
+        self,
+        per_account: int = 5,
+        per_ip: int = 20,
+        window: timedelta = timedelta(minutes=15),
+        clock: Callable[[], datetime] = _utc_now,
+    ):
+        self._limits = {"account": per_account, "ip": per_ip}
+        self._window = window
+        self._clock = clock
+        self._failures: dict[tuple, deque[datetime]] = {}
+
+    def _keys(self, email: str, ip: str) -> list[tuple[tuple, int]]:
+        email = email.strip().lower()
+        return [(("account", email, ip), self._limits["account"]), (("ip", ip), self._limits["ip"])]
+
+    def _recent(self, key: tuple) -> deque[datetime]:
+        failures = self._failures.get(key, deque())
+        cutoff = self._clock() - self._window
+        while failures and failures[0] <= cutoff:
+            failures.popleft()
+        if not failures:
+            self._failures.pop(key, None)  # don't keep empty entries forever
+        return failures
+
+    def check(self, email: str, ip: str) -> None:
+        """Raise TooManyAttemptsError if either window is full."""
+        for key, limit in self._keys(email, ip):
+            failures = self._recent(key)
+            if len(failures) >= limit:
+                # Free again when the oldest failure that fills the window expires.
+                free_at = failures[-limit] + self._window
+                raise TooManyAttemptsError(max(1, ceil((free_at - self._clock()).total_seconds())))
+
+    def failed(self, email: str, ip: str) -> None:
+        now = self._clock()
+        for key, _ in self._keys(email, ip):
+            self._failures.setdefault(key, deque()).append(now)
+
+    def succeeded(self, email: str, ip: str) -> None:
+        # The account's count restarts: whoever knows the password isn't guessing.
+        # The IP's doesn't: one right password must not unlock guessing others.
+        self._failures.pop(self._keys(email, ip)[0][0], None)
+
+
 class Auth:
     def __init__(
         self,
         hasher: PasswordHasher | None = None,
         session_days: int = 30,
         clock: Callable[[], datetime] = _utc_now,
+        throttle: LoginThrottle | None = None,
     ):
+        self.throttle = throttle or LoginThrottle(clock=clock)
         # Tests pass a cheap hasher; the default parameters are argon2-cffi's,
         # which follow RFC 9106's recommendations.
         self._hasher = hasher or PasswordHasher()
@@ -117,8 +186,24 @@ class Auth:
         session.commit()
         return user
 
-    def login(self, session: Session, email: str, password: str) -> tuple[str, datetime]:
-        """A new session token and when it expires."""
+    def login(
+        self, session: Session, email: str, password: str, ip: str = ""
+    ) -> tuple[str, datetime]:
+        """A new session token and when it expires.
+
+        Checked against the throttle before the password: a blocked attempt
+        doesn't even cost a hash, and says nothing about the password.
+        """
+        self.throttle.check(email, ip)
+        try:
+            token, expires = self._login(session, email, password)
+        except InvalidCredentialsError:
+            self.throttle.failed(email, ip)
+            raise
+        self.throttle.succeeded(email, ip)
+        return token, expires
+
+    def _login(self, session: Session, email: str, password: str) -> tuple[str, datetime]:
         try:
             email = normalize_email(email)
         except InvalidEmailError:

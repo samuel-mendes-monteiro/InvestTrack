@@ -26,6 +26,7 @@ from investtrack.auth import (
     EmailTakenError,
     InvalidCredentialsError,
     InvalidEmailError,
+    TooManyAttemptsError,
     WeakPasswordError,
 )
 from investtrack.b3 import B3Client
@@ -328,13 +329,26 @@ def create_app(
     @app.post(
         "/auth/login",
         tags=["auth"],
-        responses={401: {"model": ErrorOut, "description": "Wrong email or password"}},
+        responses={
+            401: {"model": ErrorOut, "description": "Wrong email or password"},
+            429: {"model": ErrorOut, "description": "Too many failed attempts"},
+        },
     )
     def login(payload: Credentials, session: SessionDep, request: Request) -> SessionOut:
+        # Behind a reverse proxy this is the proxy's address, unless uvicorn
+        # runs with --proxy-headers (it then trusts X-Forwarded-For).
+        ip = request.client.host if request.client else ""
         try:
-            token, expires = request.app.state.auth.login(session, payload.email, payload.password)
+            token, expires = request.app.state.auth.login(
+                session, payload.email, payload.password, ip
+            )
         except InvalidCredentialsError as e:
             raise api_error(401, "INVALID_CREDENTIALS", e) from e
+        except TooManyAttemptsError as e:
+            error = api_error(429, "TOO_MANY_ATTEMPTS", e)
+            error.detail["retry_after"] = e.retry_after
+            error.headers = {"Retry-After": str(e.retry_after)}  # the standard header
+            raise error from e
         return SessionOut(token=token, expires_at=expires)
 
     @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["auth"])
