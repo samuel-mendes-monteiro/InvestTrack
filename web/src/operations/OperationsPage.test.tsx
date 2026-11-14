@@ -13,7 +13,7 @@ const OPERATIONS = [
 ]
 
 test('lists operations and filters by ticker', async () => {
-  fakeApi({ 'GET /operations': { body: OPERATIONS } })
+  fakeApi({ 'GET /operations': { body: OPERATIONS }, 'GET /stock-events': { body: [] } })
   renderWithApp(<OperationsPage />)
 
   expect(await screen.findByRole('row', { name: /VALE3/ })).toHaveTextContent('01/04/2026VendaVALE310R$ 60,50R$ 0,00')
@@ -93,6 +93,7 @@ test("the API's refusal is shown in Portuguese and the form stays open", async (
 test('editing starts from the operation and saves with PUT', async () => {
   const api = fakeApi({
     'GET /operations': { body: OPERATIONS },
+    'GET /stock-events': { body: [] },
     'PUT /operations/1': { body: operation({ fees: '9.90' }) },
   })
   renderWithApp(<OperationsPage />)
@@ -114,20 +115,25 @@ test('editing starts from the operation and saves with PUT', async () => {
 })
 
 test('deleting asks first, then refetches', async () => {
-  const api = fakeApi({ 'GET /operations': { body: OPERATIONS }, 'DELETE /operations/2': { status: 204 } })
+  const api = fakeApi({
+    'GET /operations': { body: OPERATIONS },
+    'GET /stock-events': { body: [] },
+    'DELETE /operations/2': { status: 204 },
+  })
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   renderWithApp(<OperationsPage />)
 
   await userEvent.click(await screen.findByRole('button', { name: 'Apagar operação #2' }))
 
   expect(confirm).toHaveBeenCalledWith('Apagar a operação #2 (Venda de 10 VALE3 em 01/04/2026)?')
-  await vi.waitFor(() => expect(api.requests.filter((r) => r.method === 'GET')).toHaveLength(2))
+  await vi.waitFor(() => expect(api.requests.filter((r) => r.method === 'GET' && r.url.endsWith('/operations'))).toHaveLength(2))
   confirm.mockRestore()
 })
 
 test('a refused delete explains why', async () => {
   fakeApi({
     'GET /operations': { body: OPERATIONS },
+    'GET /stock-events': { body: [] },
     'DELETE /operations/1': {
       status: 409,
       body: { detail: { code: 'DELETE_BREAKS_LATER_SALE', message: 'x', ticker: 'PETR4' } },

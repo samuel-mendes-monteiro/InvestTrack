@@ -167,3 +167,9 @@ export function decimalField(label: string, text: string, fallback?: string): st
     throw new Error(`${label}: '${text}' não é um número válido.`)
   }
 }
+
+/** "1.1" -> "10": a bonus multiplier as the percentage of new shares, exactly. */
+export function multiplierToPercent(multiplier: string): string {
+  // "E+2" moves the decimal point two places: x100 with no arithmetic at all.
+  return quantity(`${sumDecimals([multiplier, '-1'])}E+2`)
+}

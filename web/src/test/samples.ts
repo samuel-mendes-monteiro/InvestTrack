@@ -74,3 +74,16 @@ export function income(overrides: Partial<Schemas['IncomeOut']> = {}): Schemas['
 export function month(year: number, m: number, overrides: Partial<Schemas['MonthlyIncomeOut']> = {}) {
   return { year, month: m, dividend: '0.00', jcp: '0.00', distribution: '0.00', tax: '0.00', net: '0.00', ...overrides }
 }
+
+export function stockEvent(overrides: Partial<Schemas['StockEventOut']> = {}): Schemas['StockEventOut'] {
+  return {
+    ticker: 'ITSA4',
+    event_type: 'BONUS',
+    record_date: '2026-02-01',
+    multiplier: '1.1',
+    quantity_before: '100.00000000',
+    quantity_after: '110.00000000',
+    unit_cost: null,
+    ...overrides,
+  }
+}

@@ -418,3 +418,7 @@ fieldset.segmented label {
   margin: 8px 0 16px;
   font-size: 0.8rem;
 }
+
+.actions .push-left {
+  margin-right: auto;
+}

@@ -3,6 +3,7 @@ import { useDeleteOperation, useOperations, type Operation } from '../api/querie
 import { brDate, brl, quantity } from '../format'
 import { OP_TYPES } from '../labels'
 import { OperationForm } from './OperationForm'
+import { StockEvents } from './StockEvents'
 
 export function OperationsPage() {
   const operations = useOperations()
@@ -83,6 +84,7 @@ export function OperationsPage() {
           </tbody>
         </table>
       </div>
+      <StockEvents />
       {editing && <OperationForm key={editing.id} operation={editing} onClose={() => setEditing(null)} />}
     </>
   )

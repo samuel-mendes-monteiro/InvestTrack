@@ -89,3 +89,28 @@ export function useDeleteIncome() {
     onSuccess: invalidate,
   })
 }
+
+export type StockEvent = Schemas['StockEventOut']
+
+export function useStockEvents() {
+  return useQuery({ queryKey: ['stock-events'], queryFn: () => call(api.GET('/stock-events')) })
+}
+
+const bonusPath = (e: StockEvent) => ({ params: { path: { ticker: e.ticker, record_date: e.record_date } } })
+
+export function useSetBonusCost() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ event, unitCost }: { event: StockEvent; unitCost: string }) =>
+      call(api.PUT('/stock-events/{ticker}/{record_date}/unit-cost', { ...bonusPath(event), body: { unit_cost: unitCost } })),
+    onSuccess: invalidate,
+  })
+}
+
+export function useDeleteBonusCost() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (event: StockEvent) => call(api.DELETE('/stock-events/{ticker}/{record_date}/unit-cost', bonusPath(event))),
+    onSuccess: invalidate,
+  })
+}

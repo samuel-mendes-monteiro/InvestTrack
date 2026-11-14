@@ -21,3 +21,9 @@ export const INCOME_TYPES: Record<Schemas['IncomeType'], string> = {
 }
 
 export const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+export const STOCK_EVENT_TYPES: Record<Schemas['StockEventType'], string> = {
+  SPLIT: 'Desdobramento',
+  REVERSE_SPLIT: 'Grupamento',
+  BONUS: 'Bonificação',
+}
