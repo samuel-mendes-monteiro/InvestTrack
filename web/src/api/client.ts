@@ -1,7 +1,7 @@
 import createClient, { type Middleware } from 'openapi-fetch'
 import { ApiError, toApiError } from './errors'
 import type { paths } from './schema'
-import { getToken, setToken } from './session'
+import { expireSession, getToken } from './session'
 
 // Where a 401 means "wrong password", not "your session ended".
 const LOGIN_PATHS = ['/auth/login', '/auth/register']
@@ -14,8 +14,8 @@ const auth: Middleware = {
   },
   onResponse({ response, schemaPath }) {
     // An expired or revoked session: forget the token, and the app (which
-    // watches it through useToken) goes back to the login screen by itself.
-    if (response.status === 401 && !LOGIN_PATHS.includes(schemaPath)) setToken(null)
+    // watches it through useSession) goes back to the login screen by itself.
+    if (response.status === 401 && !LOGIN_PATHS.includes(schemaPath)) expireSession()
     return response
   },
 }

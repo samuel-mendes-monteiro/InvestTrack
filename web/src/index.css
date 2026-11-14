@@ -35,3 +35,140 @@ main {
   margin: 0 auto;
   padding: 24px 16px;
 }
+
+/* --- base controls --------------------------------------------------------- */
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 1.75rem;
+}
+
+.muted,
+small {
+  color: var(--muted);
+}
+
+.narrow {
+  max-width: 400px;
+  padding-top: 64px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 500;
+}
+
+label small {
+  font-weight: 400;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input,
+select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button.primary {
+  padding: 9px 14px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs [role='tab'] {
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+}
+
+.tabs [role='tab'][aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.alert {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid;
+}
+
+.stack .alert {
+  margin: 0;
+}
+
+.alert.error {
+  border-color: var(--negative);
+  color: var(--negative);
+}
+
+.alert.warning {
+  border-color: #bf8700;
+  color: #9a6700;
+}
+
+@media (prefers-color-scheme: dark) {
+  .alert.warning {
+    color: #d29922;
+  }
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.spacer {
+  flex: 1;
+}
