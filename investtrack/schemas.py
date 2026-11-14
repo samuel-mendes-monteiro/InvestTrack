@@ -236,3 +236,30 @@ class ErrorDetail(BaseModel):
 
 class ErrorOut(BaseModel):
     detail: ErrorDetail
+
+
+class ImportRowOut(BaseModel):
+    line: int = Field(description="Row in the spreadsheet")
+    status: str = Field(description="NEW, DUPLICATE, REJECTED, or IMPORTED after importing")
+    date: date
+    op_type: OpType
+    ticker: str
+    quantity: Decimal
+    price: Decimal
+    error: ErrorDetail | None = Field(description="Why a REJECTED row can't be imported")
+
+
+class SkippedRowOut(BaseModel):
+    line: int
+    reason: str = Field(description="UNSUPPORTED_MARKET, UNKNOWN_TYPE or UNREADABLE_ROW")
+    detail: str
+
+
+class ImportOut(BaseModel):
+    imported: bool = Field(description="False for a preview: nothing was saved")
+    new: int
+    duplicates: int
+    rejected: int
+    skipped: int
+    rows: list[ImportRowOut]
+    skipped_rows: list[SkippedRowOut]

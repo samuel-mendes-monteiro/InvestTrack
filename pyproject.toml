@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "investtrack"
-version = "0.5.0"
+version = "0.6.0"
 description = "Personal investment portfolio tracker for the Brazilian stock market (B3)"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,6 +15,8 @@ dependencies = [
     "python-dotenv>=1.0",
     "alembic>=1.13",
     "argon2-cffi>=23.1",
+    "openpyxl>=3.1",
+    "defusedxml>=0.7",  # openpyxl uses it to parse uploaded files safely
 ]
 
 [project.optional-dependencies]

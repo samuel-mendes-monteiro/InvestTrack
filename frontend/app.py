@@ -17,7 +17,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from api_client import ApiClient, ApiError, NotLoggedInError
+from api_client import ApiClient, ApiError, NotLoggedInError, domain_error
 from formatting import brl, parse_decimal, pct, per_share, quantity
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
@@ -26,6 +26,17 @@ OP_TYPES = {"Compra": "BUY", "Venda": "SELL"}
 OP_LABELS = {v: k for k, v in OP_TYPES.items()}
 INCOME_TYPES = {"Dividendo": "DIVIDEND", "JCP": "JCP", "Rendimento (FII)": "DISTRIBUTION"}
 INCOME_LABELS = {v: k for k, v in INCOME_TYPES.items()}
+IMPORT_STATUS = {
+    "NEW": "Nova",
+    "DUPLICATE": "Já registrada",
+    "REJECTED": "Recusada",
+    "IMPORTED": "Importada",
+}
+SKIP_REASONS = {
+    "UNSUPPORTED_MARKET": "mercado não suportado (opções, termo, futuro...)",
+    "UNKNOWN_TYPE": "não é compra nem venda",
+    "UNREADABLE_ROW": "linha ilegível",
+}
 FI_PRODUCTS = ["CDB", "LCI", "LCA"]
 FI_INDEXERS = {"% do CDI": "CDI", "Prefixado": "PRE"}
 FI_STATUS = {"ACTIVE": "Aplicado", "REDEEMED": "Resgatado", "MATURED": "Vencido"}
@@ -241,6 +252,80 @@ def on_delete_fixed_income(investment_id: int) -> None:
         flash("error", f"Não foi possível apagar: {e}")
         return
     flash("success", f"Aplicação #{investment_id} apagada.")
+
+
+def on_import(data: bytes) -> None:
+    try:
+        result = api.import_b3(data)
+    except ApiError as e:
+        flash("error", f"Importação não feita: {e}")
+        return
+    imported = sum(1 for r in result["rows"] if r["status"] == "IMPORTED")
+    flash("success", f"{imported} operações importadas.")
+    st.session_state["upload_key"] = st.session_state.get("upload_key", 0) + 1  # clears the file
+
+
+def import_section() -> None:
+    with st.expander("Importar extrato da B3", expanded=not operations):
+        st.caption(
+            "Na Área do Investidor da B3 (investidor.b3.com.br), abra Extratos → Negociação, "
+            "escolha o período e exporte em Excel. Operações já registradas são reconhecidas "
+            "e não se repetem. O extrato não traz as taxas: as operações entram com taxa zero."
+        )
+        upload = st.file_uploader(
+            "Extrato de Negociação (.xlsx)",
+            type=["xlsx"],
+            key=f"statement_{st.session_state.get('upload_key', 0)}",
+        )
+        if upload is None:
+            return
+        data = upload.getvalue()
+        try:
+            preview = api.preview_b3_import(data)
+        except ApiError as e:
+            st.error(str(e))
+            return
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Novas", preview["new"])
+        c2.metric("Já registradas", preview["duplicates"])
+        c3.metric("Recusadas", preview["rejected"])
+        c4.metric("Ignoradas", preview["skipped"])
+        if preview["rows"]:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Linha": r["line"],
+                            "Situação": IMPORT_STATUS[r["status"]],
+                            "Data": date.fromisoformat(r["date"]).strftime("%d/%m/%Y"),
+                            "Tipo": OP_LABELS[r["op_type"]],
+                            "Ticker": r["ticker"],
+                            "Qtd": quantity(r["quantity"]),
+                            "Preço": brl(r["price"]),
+                            "Motivo": domain_error(r["error"]) if r["error"] else "",
+                        }
+                        for r in preview["rows"]
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+        for s in preview["skipped_rows"]:
+            st.caption(f"Linha {s['line']} ignorada: {SKIP_REASONS[s['reason']]} · {s['detail']}")
+        if preview["rejected"]:
+            st.warning(
+                "As linhas recusadas venderiam mais do que você tem. Elas ficam de fora; "
+                "registre antes as compras que faltam (por exemplo, com um extrato de um "
+                "período mais antigo) e importe de novo."
+            )
+        st.button(
+            f"Importar {preview['new']} operações",
+            type="primary",
+            disabled=preview["new"] == 0,
+            on_click=on_import,
+            args=(data,),
+        )
 
 
 def on_create_income() -> None:
@@ -527,6 +612,7 @@ elif view == "Rentabilidade":
 # --- operations view ---------------------------------------------------------
 
 elif view == "Operações":
+    import_section()
     if not operations:
         st.info("Nenhuma operação registrada.")
     else:

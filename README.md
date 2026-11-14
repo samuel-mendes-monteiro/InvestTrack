@@ -23,6 +23,7 @@ InvestTrack is a web app where each person, with their own account, records thei
 - dividends, JCP and FII distributions, **computed automatically** from what B3 publishes and what you owned on each record date, including income still to be paid
 - how your portfolio is split across assets
 - fixed income (CDB, LCI, LCA) at % of CDI or pre-fixed rates, valued daily with IOF and regressive income tax
+- trades imported from **B3's trade statement** (Excel), with a preview and without duplicates
 - your **time-weighted return** since the first trade, compared with the CDI and the Ibovespa
 
 Quotes from B3 are fetched automatically from [brapi.dev](https://brapi.dev), and income events from B3's own website. Invalid operations, such as selling more shares than you own on that date, are refused with a clear message:
@@ -61,6 +62,8 @@ flowchart LR
 | [`investtrack/income.py`](investtrack/income.py) | Income (dividends, JCP, FII distributions): computed from events and trades, monthly totals. Also pure |
 | [`investtrack/events.py`](investtrack/events.py) | Stores B3 events (income, splits, bonus shares), synced once a day, with fallback to what is stored |
 | [`investtrack/b3.py`](investtrack/b3.py) | The only module that knows B3's corporate events URLs and JSON format |
+| [`investtrack/b3_statement.py`](investtrack/b3_statement.py) | Reads B3's trade statement (Excel); the only module that knows its format |
+| [`investtrack/statement_import.py`](investtrack/statement_import.py) | Decides which statement rows are new, already registered or invalid. Pure |
 | [`investtrack/performance.py`](investtrack/performance.py) | Time-weighted return and benchmarks (CDI, Ibovespa). Pure |
 | [`investtrack/fixed_income.py`](investtrack/fixed_income.py) | CDB, LCI and LCA: value from the CDI or a fixed rate, IOF and income tax. Pure |
 | [`investtrack/market_data.py`](investtrack/market_data.py) | Stores daily prices, Ibovespa and CDI; downloads only what is missing, in the background |
@@ -125,6 +128,15 @@ pre-fixed:  value = amount × (1 + annual_rate) ^ (business_days / 252)
 - Applying is an inflow and redeeming an outflow, so fixed income joins the portfolio's value and its TWR. An LCI at 100% of the CDI earns exactly the CDI.
 - Redemptions are of the whole investment; partial redemptions and IPCA+ are not supported yet.
 
+**Importing B3's trade statement** (Área do Investidor → Extratos → Negociação, in Excel) shows a preview first. Each row is:
+
+- **new**, to be added;
+- **already registered**: an operation with the same date, type, ticker, quantity and price exists, imported before or typed by hand (fees don't count: the statement has none). The comparison is between multisets, so two identical trades on the same day are two trades, and overlapping statements import each trade once;
+- **rejected**, if that ticker's trades would sell more than owned: its new rows stay out, since half a history gives an average price that matches nothing;
+- **skipped**, for options, forward and futures markets.
+
+Fractional-lot tickers become the regular ones (`RECV3F` is `RECV3`). Imported trades have no fees, because the statement doesn't have them.
+
 **Performance** is the time-weighted return (TWR), which measures how the assets did regardless of when money was put in or taken out:
 
 ```
@@ -163,6 +175,9 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 - **Login errors don't reveal accounts.** A wrong email and a wrong password give the same message, and take the same time: an unknown email is still checked against a dummy hash.
 - **Every row of user data has an owner, and every query filters by it.** Another user's row by id answers 404, exactly like a missing one, so ids reveal nothing. Market data (quotes, CDI, B3 events) is shared. A test walks through every route of the API and fails if one answers without a session, so a future endpoint can't forget it.
 - **The first real migration.** Until v0.4, new tables were enough (`create_all`). Adding an owner to tables that already have data needs migrations, so v0.5 brings Alembic. The baseline migration only creates missing tables, so databases from before and new ones follow the same path; the first account created adopts the data from before accounts existed. `bonus_costs` changes its primary key, which Alembic can't detect, so it is rebuilt by hand.
+- **The trade statement, not the movement one.** B3's movement statement ("Movimentação") is dated by settlement, two business days after the trade. A buy on a record date would show up after it, and its income and the order of the trades would be wrong.
+- **Uploaded files are untrusted.** The file goes as the raw request body (no multipart parser needed), files over 5 MB are refused from the `Content-Length` header before being read, and openpyxl parses the XML through `defusedxml`. The login check runs before the upload is read: FastAPI resolves dependencies in parameter order.
+- **B3's spreadsheets declare a wrong size** (`<dimension ref="A1"/>`), and openpyxl's fast mode trusts it and reads a single cell; the size is recomputed before reading. Numbers come as Excel floats and are turned into `Decimal` through `repr`, which gives back the decimal that was typed.
 - **The frontend never imports the backend.** It only talks to the API over HTTP, so the Streamlit UI can later be replaced by React without touching the backend.
 
 ## Testing
@@ -171,7 +186,7 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 pytest --cov
 ```
 
-370 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
+406 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
 
 The calculation tests include the worked example used to design the rules:
 
@@ -245,6 +260,8 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 | `GET` | `/fixed-income` | Each investment with gross value, IOF, income tax and net value |
 | `PUT` | `/fixed-income/{id}/redemption` | Early redemption on a date (`null` undoes it) |
 | `DELETE` | `/fixed-income/{id}` | Delete an investment |
+| `POST` | `/imports/b3/preview` | What importing a B3 trade statement (raw `.xlsx` body) would add; saves nothing |
+| `POST` | `/imports/b3` | Import the statement's new trades in one transaction |
 | `GET` | `/performance` | Daily TWR, CDI and Ibovespa since the first trade (downloads missing history in the background) |
 | `GET` | `/health` | Health check |
 
@@ -272,7 +289,7 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 - [x] **v0.4:** fixed income (CDB, LCI, LCA)
 - [ ] Partial redemptions and IPCA+ fixed income
 - [x] **v0.5:** login and multiple users
-- [ ] **v0.6:** import B3 trade statements
+- [x] **v0.6:** import B3 trade statements
 - [ ] **v1.0:** React frontend and cloud deployment
 
 ## License

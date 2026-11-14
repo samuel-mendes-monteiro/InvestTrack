@@ -14,6 +14,7 @@ from investtrack.income import IncomeEvent, IncomeType
 from investtrack.market_data import StaticMarketData
 from investtrack.portfolio import StockEvent, StockEventType
 from investtrack.prices import StaticPriceProvider
+from tests.test_b3_statement import statement, trade
 
 PRICES = StaticPriceProvider({"PETR4": Decimal("38"), "HGLG11": Decimal("160")})
 
@@ -810,3 +811,67 @@ def test_me_and_logout(client):
     assert client.get("/auth/me").json()["email"] == "ana@example.com"
     assert client.post("/auth/logout").status_code == 204
     assert client.get("/auth/me").status_code == 401  # the token no longer works
+
+
+# --- B3 statement import -----------------------------------------------------
+
+XLSX = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+FILE = statement(
+    trade(day="05/01/2026", qty=100, price=30),
+    trade(day="05/01/2026", market="Mercado Fracionário", ticker="PETR4F", qty=5, price=30),
+    trade(day="10/03/2026", kind="Venda", qty=50, price=50),
+    trade(day="10/03/2026", market="Opção de Compra", ticker="PETRK300"),
+)
+
+
+def test_preview_saves_nothing(client):
+    body = client.post("/imports/b3/preview", content=FILE, headers=XLSX).json()
+    assert (body["imported"], body["new"], body["skipped"]) == (False, 3, 1)
+    assert [r["ticker"] for r in body["rows"]] == ["PETR4"] * 3
+    assert body["skipped_rows"][0]["reason"] == "UNSUPPORTED_MARKET"
+    assert client.get("/operations").json() == []
+
+
+def test_import_and_import_again(client):
+    first = client.post("/imports/b3", content=FILE, headers=XLSX).json()
+    assert first["imported"] is True
+    assert [r["status"] for r in first["rows"]] == ["IMPORTED"] * 3
+    petr = client.get("/portfolio").json()["positions"][0]
+    assert (petr["quantity"], petr["avg_price"]) == ("55", "30.00")
+    assert client.get("/operations").json()[0]["fees"] == "0"  # the statement has no fees
+
+    again = client.post("/imports/b3", content=FILE, headers=XLSX).json()
+    assert (again["new"], again["duplicates"]) == (0, 3)
+    assert len(client.get("/operations").json()) == 3
+
+
+def test_typed_operation_is_recognized(client):
+    client.post("/operations", json=op(qty="100", price="30", fees="4.90", day="2026-01-05"))
+    body = client.post("/imports/b3/preview", content=FILE, headers=XLSX).json()
+    assert [r["status"] for r in body["rows"]] == ["DUPLICATE", "NEW", "NEW"]
+
+
+def test_sale_without_shares_is_rejected_with_the_reason(client):
+    sale = statement(trade(day="20/10/2026", kind="Venda", ticker="RECV3F", qty=9, price=12.66))
+    body = client.post("/imports/b3", content=sale, headers=XLSX).json()
+    assert body["rejected"] == 1
+    assert body["rows"][0]["error"]["code"] == "INSUFFICIENT_POSITION"
+    assert body["rows"][0]["error"]["available"] == "0"
+    assert client.get("/operations").json() == []
+
+
+def test_new_ticker_gets_a_guessed_type(client):
+    fii = statement(trade(ticker="HGLG11", qty=10, price=158.4))
+    client.post("/imports/b3", content=fii, headers=XLSX)
+    assert client.get("/operations").json()[0]["ticker"] == "HGLG11"
+
+
+def test_invalid_statement(client):
+    r = client.post("/imports/b3/preview", content=b"not a spreadsheet", headers=XLSX)
+    assert (r.status_code, r.json()["detail"]["code"]) == (422, "INVALID_STATEMENT")
+
+
+def test_too_large_is_refused_before_reading(client):
+    big = b"x" * (5 * 1024 * 1024 + 1)
+    r = client.post("/imports/b3/preview", content=big, headers=XLSX)
+    assert (r.status_code, r.json()["detail"]["code"]) == (413, "FILE_TOO_LARGE")

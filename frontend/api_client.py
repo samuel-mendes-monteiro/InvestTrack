@@ -8,6 +8,8 @@ from decimal import Decimal
 
 import requests
 
+XLSX_HEADER = {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+
 
 class ApiError(Exception):
     """A user-facing error message from the API (or from not reaching it)."""
@@ -66,6 +68,12 @@ class ApiClient:
 
     def delete_fixed_income(self, investment_id: int) -> None:
         self._request("DELETE", f"/fixed-income/{investment_id}")
+
+    def preview_b3_import(self, data: bytes) -> dict:
+        return self._request("POST", "/imports/b3/preview", data=data, headers=XLSX_HEADER)
+
+    def import_b3(self, data: bytes) -> dict:
+        return self._request("POST", "/imports/b3", data=data, headers=XLSX_HEADER)
 
     def performance(self) -> dict:
         return self._request("GET", "/performance")
@@ -158,7 +166,7 @@ def _qty(value: str) -> str:
     return str(value).rstrip("0").rstrip(".") if "." in str(value) else str(value)
 
 
-def _domain_error(d: dict) -> str:
+def domain_error(d: dict) -> str:
     """Our API's errors, translated from their stable code."""
     match d.get("code"):
         case "INSUFFICIENT_POSITION":
@@ -195,6 +203,15 @@ def _domain_error(d: dict) -> str:
             return "E-mail inválido."
         case "NOT_AUTHENTICATED":
             return "Sua sessão expirou. Entre de novo."
+        case "INVALID_STATEMENT" if "columns" in d.get("message", ""):
+            return (
+                "Esse arquivo não parece ser o extrato de Negociação da B3. Na Área do "
+                "Investidor, use Extratos → Negociação e exporte em Excel."
+            )
+        case "INVALID_STATEMENT":
+            return "O arquivo não é uma planilha Excel (.xlsx)."
+        case "FILE_TOO_LARGE":
+            return "Arquivo grande demais (máximo de 5 MB)."
         case "INVALID_FIXED_INCOME":
             return FIXED_INCOME_MESSAGES.get(d.get("message"), d.get("message", ""))
         case "FIXED_INCOME_NOT_FOUND":
@@ -240,7 +257,7 @@ def error_message(response: requests.Response) -> str:
     except ValueError:
         return f"Erro {response.status_code} da API."
     if isinstance(detail, dict):
-        return _domain_error(detail)
+        return domain_error(detail)
     if isinstance(detail, list):
         return "; ".join(_validation_error(err) for err in detail) + "."
     if isinstance(detail, str):

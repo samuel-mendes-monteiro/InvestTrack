@@ -18,6 +18,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, contains_eager
 
+from investtrack.b3_statement import StatementRow, guess_asset_type
 from investtrack.events import NO_EVENTS, EventSource
 from investtrack.fixed_income import FixedIncome
 from investtrack.income import Income, check_incomes, incomes_from_events
@@ -39,6 +40,7 @@ from investtrack.portfolio import (
     calculate_portfolio,
     calculate_position,
 )
+from investtrack.statement_import import PlannedRow, Status, plan_import
 
 
 class OperationNotFoundError(LookupError):
@@ -413,3 +415,51 @@ def redeem_fixed_income(
 def delete_fixed_income(session: Session, user_id: int, investment_id: int) -> None:
     session.delete(_get_fixed_income(session, user_id, investment_id))
     session.commit()
+
+
+# --- statement import --------------------------------------------------------
+
+
+def _asset_type(session: Session, ticker: str) -> AssetType:
+    asset = session.scalar(select(Asset).where(Asset.ticker == ticker))
+    return asset.asset_type if asset else guess_asset_type(ticker)
+
+
+def plan_statement_import(
+    session: Session, user_id: int, rows: list[StatementRow], events: EventSource = NO_EVENTS
+) -> list[PlannedRow]:
+    """What importing these rows would do, without saving anything."""
+    existing = [to_domain(r) for r in list_operations(session, user_id)]
+    tickers = {r.ticker for r in rows}
+    stock = [
+        e
+        for ticker in tickers
+        for e in events.events_for(ticker, _asset_type(session, ticker)).stock
+    ]
+    return plan_import(existing, rows, _with_bonus_costs(session, user_id, stock))
+
+
+def import_statement(
+    session: Session, user_id: int, rows: list[StatementRow], events: EventSource = NO_EVENTS
+) -> list[PlannedRow]:
+    """Save the NEW rows, all in one transaction: all of them or none."""
+    plan = plan_statement_import(session, user_id, rows, events)
+    for planned in plan:
+        if planned.status is Status.NEW:
+            row = planned.row
+            session.add(
+                OperationRecord(
+                    user_id=user_id,
+                    asset=get_or_create_asset(
+                        session, row.ticker, _asset_type(session, row.ticker)
+                    ),
+                    op_type=row.op_type,
+                    date=row.date,
+                    quantity=row.quantity,
+                    price=row.price,
+                    fees=Decimal("0"),  # the statement has no fees
+                )
+            )
+            session.flush()  # the next row of the same new ticker finds the asset
+    session.commit()
+    return plan

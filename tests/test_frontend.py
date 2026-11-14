@@ -266,3 +266,25 @@ def test_wrong_password_is_not_a_session_error():
     with pytest.raises(ApiError, match="E-mail ou senha incorretos") as exc:
         client.login("ana@x.com", "wrong one")
     assert not isinstance(exc.value, NotLoggedInError)
+
+
+def test_import_sends_the_file_as_the_body():
+    client, session = client_with(fake_response(200, '{"rows": []}'))
+    client.import_b3(b"xlsx bytes")
+    session.request.assert_called_once_with(
+        "POST",
+        "http://api.test/imports/b3",
+        timeout=15.0,
+        data=b"xlsx bytes",
+        headers={
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        },
+    )
+
+
+def test_wrong_statement_is_explained():
+    body = (
+        '{"detail": {"code": "INVALID_STATEMENT",'
+        ' "message": "missing columns: is this the trade statement (Negociação)?"}}'
+    )
+    assert "Extratos → Negociação" in api_error_for(422, body)
