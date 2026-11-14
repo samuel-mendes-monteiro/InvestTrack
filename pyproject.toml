@@ -16,6 +16,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The frontend talks to the API over HTTP only, so the backend doesn't need these.
+ui = [
+    "streamlit>=1.40",
+    "plotly>=5.24",
+]
 dev = [
     "pytest>=8",
     "httpx>=0.27",
@@ -26,6 +31,7 @@ packages = ["investtrack"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["frontend"]  # frontend modules are imported like Streamlit does
 filterwarnings = [
     # Starlette's TestClient now suggests the "httpx2" package; httpx still works.
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",

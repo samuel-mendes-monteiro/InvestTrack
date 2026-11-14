@@ -73,6 +73,7 @@ Trades are processed **in date order** (not in the order they were entered), and
 - **Money is sent as JSON strings** (`"35.10"`), not numbers, so API clients never parse it into a float. Values are rounded to 2 decimals only in the response.
 - **Quotes are cached** in the database for 15 minutes per ticker, so the cache survives restarts and stays within brapi's free quota. If brapi is down, the last known price is shown and flagged as stale, together with when it was fetched.
 - **Outages vs. per-ticker errors.** A timeout or 5xx pauses calls to brapi for a minute, so a portfolio with many tickers doesn't wait for one timeout per ticker. A 401/404 only affects that ticker.
+- **The frontend never imports the backend.** It is a pure HTTP client of the API, so the Streamlit UI can later be replaced by React without touching the backend. Money is typed into text fields (accepting `30,50` or `1.234,56`) because Streamlit's number input returns a float.
 - **Tests never touch the internet.** The HTTP session, the quote source and even the clock are replaced by fakes, so tests are fast, deterministic and don't spend the API quota.
 
 ## Roadmap
@@ -82,7 +83,7 @@ Trades are processed **in date order** (not in the order they were entered), and
 - [x] **Stage 2:** database (SQLAlchemy)
 - [x] **Stage 3:** REST API (FastAPI)
 - [x] **Stage 4:** live quotes (brapi) with caching
-- [ ] **Stage 5:** Streamlit UI
+- [x] **Stage 5:** Streamlit UI
 - [ ] **Stage 6:** CI with GitHub Actions + polish
 
 After the MVP: dividends (v0.2), time-weighted return (v0.3), fixed income (v0.4), authentication (v0.5), B3 import (v0.6), React frontend + deployment (v1.0).
@@ -94,7 +95,7 @@ git clone https://github.com/samuel-mendes-monteiro/InvestTrack.git
 cd InvestTrack
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,ui]"
 ```
 
 Run the tests:
@@ -128,6 +129,14 @@ Quotes come from [brapi.dev](https://brapi.dev). To configure them, copy the exa
 ```bash
 cp .env.example .env
 ```
+
+With the API running, start the web interface in another terminal and open http://localhost:8501:
+
+```bash
+streamlit run frontend/app.py
+```
+
+The interface only talks to the API over HTTP (set `API_URL` if it is not on `http://localhost:8000`).
 
 The database URL can be changed with the `DATABASE_URL` environment variable (default: `sqlite:///investtrack.db`).
 
