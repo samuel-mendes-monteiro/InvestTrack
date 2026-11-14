@@ -1,56 +1,52 @@
 import { useSyncExternalStore } from 'react'
 
-// The session token, kept outside React so the HTTP client (not a component)
-// can end the session on a 401, while components re-render when it changes.
+// Whether the user is logged in, kept outside React so the HTTP client (not a
+// component) can end the session on a 401, while components re-render.
 //
-// localStorage survives reloads, which is what a "stay logged in" token needs,
-// but any script running on the page can read it (XSS). That is acceptable
-// while the app only runs locally; with the same-origin deploy (v1.0b) it moves
-// to an HttpOnly cookie, which scripts can't read at all.
+// The session itself is an HttpOnly cookie: the browser sends it, and no
+// JavaScript here can read it, so a script injected into the page (XSS)
+// can't steal it either. The price is that the app can't look at a token to
+// know if it's logged in; it asks the API (/api/auth/me) when it starts.
 
 export type Session = {
-  token: string | null
+  status: 'checking' | 'in' | 'out'
   /** Why the user is at the login screen, e.g. their session expired. */
   notice: string | null
+  /** Counts logins, so each one mounts a fresh app with nothing from the last. */
+  generation: number
 }
 
-const KEY = 'investtrack.token'
 const listeners = new Set<() => void>()
-
-function read(): string | null {
-  try {
-    return localStorage.getItem(KEY)
-  } catch {
-    return null // storage blocked (private mode): the session lasts until reload
-  }
-}
-
 // Replaced (never mutated) so useSyncExternalStore sees each change.
-let current: Session = { token: read(), notice: null }
+let current: Session = { status: 'checking', notice: null, generation: 0 }
 
-function update(next: Session): void {
-  current = next
-  try {
-    if (next.token) localStorage.setItem(KEY, next.token)
-    else localStorage.removeItem(KEY)
-  } catch {
-    // keep it in memory only
-  }
+function update(next: Partial<Session>): void {
+  current = { ...current, ...next }
   listeners.forEach((notify) => notify())
 }
 
-export function getToken(): string | null {
-  return current.token
+export function getSession(): Session {
+  return current
 }
 
-/** Logged in (a token) or logged out on purpose (null). */
-export function setToken(token: string | null): void {
-  update({ token, notice: null })
+/** The API accepted a login, or confirmed the cookie at startup. */
+export function markLoggedIn(): void {
+  update({ status: 'in', notice: null, generation: current.generation + 1 })
 }
 
-/** The API rejected the token: back to the login screen, saying why. */
+/** Logged out on purpose, or no session at startup. */
+export function markLoggedOut(): void {
+  update({ status: 'out', notice: null })
+}
+
+/** The API rejected the session while the app was in use: say why. */
 export function expireSession(): void {
-  if (current.token) update({ token: null, notice: 'Sua sessão expirou. Entre de novo.' })
+  if (current.status === 'in') update({ status: 'out', notice: 'Sua sessão expirou. Entre de novo.' })
+}
+
+/** Back to the start (tests). */
+export function resetSession(): void {
+  update({ status: 'checking', notice: null, generation: 0 })
 }
 
 function subscribe(listener: () => void): () => void {

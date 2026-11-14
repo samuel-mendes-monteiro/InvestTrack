@@ -192,7 +192,9 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 - **The frontend is typed from the API.** `investtrack/openapi.py` exports the OpenAPI schema to `web/openapi.json`, and `openapi-typescript` turns it into TypeScript types: a wrong path, a renamed field or a new enum value is a compile error. A Python test fails if the committed schema is stale, so the two sides can't drift apart silently. Enums (`OpType`, statuses, skip reasons) are typed as closed unions, and every label map is a `Record` over them, so a new value breaks the build until it has a Portuguese name.
 - **The browser formats money without floats too.** The API sends decimals as strings; `format.ts` rounds them on their digits with `BigInt`, half to even like Python's `Decimal`, and sums and averages exactly. `Number` is used only to draw charts, where a pixel can't be off by a cent. Python writes some decimals with an exponent (a closed position is `"0E-8"`), so the parser reads that form as well.
 - **The server owns the data, the browser caches it.** TanStack Query keeps one cache of what the API returned; screens read from it instead of copying it into component state. After any change everything is refetched: one trade moves positions, computed income, stock events and the TWR, and only the API knows how. Screens that wait for a background download (CDI, history) poll until it ends instead of asking the user to reload.
-- **Same origin, no CORS.** The browser only calls `/api/...`; in development Vite forwards it to uvicorn. Logging out or an expired session (any `401`) empties the cache, so the next person on the same browser never sees cached data.
+- **Same origin, no CORS.** The API lives under `/api` and the same server sends the web app for every other path (in development, Vite forwards `/api` to uvicorn). Reloading `/proventos` gets `index.html`, and the React router shows the page. Built files have a hash in their names, so they are cached forever; `index.html` is never cached, so a deploy shows at once. Logging out or an expired session (any `401`) empties the cache, so the next person on the same browser never sees cached data.
+- **The session is an HttpOnly cookie, not a token in JavaScript.** Until v1.0 the token was kept in `localStorage`, where any script injected into the page could read it. Now the login sets a cookie that is `HttpOnly` (scripts can't read it, and the token is never in a response body), `SameSite=Strict` (the browser doesn't send it on requests started by another site, which is what a CSRF attack needs), `Secure` over HTTPS, and limited to `/api`. The app can't see the cookie, so on startup it asks `/api/auth/me` whether it is logged in.
+- **One container, one machine.** The [Dockerfile](Dockerfile) builds the React app with Node in a first stage and copies only the result into the Python image. The server runs as an unprivileged user; the database is a SQLite file on a persistent volume. That rules out a second machine (they can't share a file), and that is fine for one person's portfolio; `DATABASE_URL` can point at PostgreSQL instead. Behind Fly's proxy, uvicorn trusts the forwarded headers, so the login limit sees each client's own IP and the cookie is marked `Secure`.
 
 ## Testing
 
@@ -200,15 +202,15 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 pytest --cov
 ```
 
-399 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota.
+416 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota.
 
 ```bash
 cd web && npm test
 ```
 
-79 frontend tests ([Vitest](https://vitest.dev) and Testing Library) drive the screens like a user (typing, clicking, uploading a statement) against a fake API, and check what is shown and what is sent.
+82 frontend tests ([Vitest](https://vitest.dev) and Testing Library) drive the screens like a user (typing, clicking, uploading a statement) against a fake API, and check what is shown and what is sent.
 
-Every push runs, with [GitHub Actions](.github/workflows/ci.yml), the linter, the formatter check and the tests on Python 3.12 and 3.14, and the frontend's linter, type check, tests and build.
+Every push runs, with [GitHub Actions](.github/workflows/ci.yml), the linter, the formatter check and the tests on Python 3.12 and 3.14, and the frontend's linter, type check, tests and build, and builds the Docker image.
 
 The calculation tests include the worked example used to design the rules:
 
@@ -246,7 +248,7 @@ python -m investtrack.demo
 
 Or create your own account on the login screen. Migrations run when the API starts; to create a new one after changing the models, use `alembic revision --autogenerate -m "..."`.
 
-Start the API (interactive docs at http://localhost:8000/docs):
+Start the API (interactive docs at http://localhost:8000/api/docs):
 
 ```bash
 uvicorn investtrack.api:app --reload
@@ -266,14 +268,34 @@ cd web
 npm run gen:api
 ```
 
+### Running it like production
+
+The image serves the API and the web app together on port 8000:
+
+```bash
+docker build -t investtrack .
+docker run -p 8000:8000 -v investtrack-data:/data --env-file .env investtrack
+```
+
+### Deploying to Fly.io
+
+With [flyctl](https://fly.io/docs/flyctl/install/) and a Fly account ([`fly.toml`](fly.toml) has the settings: São Paulo region, one always-on machine, a 1 GB volume for the database):
+
+```bash
+fly launch --copy-config --no-deploy   # creates the app; pick a free name
+fly volumes create investtrack_data --region gru --size 1
+fly secrets set BRAPI_TOKEN=...       # your brapi.dev token
+fly deploy
+```
+
 ### API
 
-Every route except `/health`, `/auth/register` and `/auth/login` needs `Authorization: Bearer <token>`, with the token returned by `/auth/login`.
+Every route is under `/api`. All except `/api/health`, `/api/auth/register` and `/api/auth/login` need the session cookie that `/api/auth/login` sets (with curl: `-c cookies.txt` on the login, `-b cookies.txt` afterwards).
 
 | Method | Route | Description |
 |---|---|---|
 | `POST` | `/auth/register` | Create an account (409 if the email is taken) |
-| `POST` | `/auth/login` | Get a session token, valid for 30 days (429 after too many failures) |
+| `POST` | `/auth/login` | Start a session, valid for 30 days, in an HttpOnly cookie (429 after too many failures) |
 | `POST` | `/auth/logout` | End the session |
 | `GET` | `/auth/me` | The logged-in user |
 | `POST` | `/operations` | Record a buy or sell (422 if selling more than owned) |
@@ -307,6 +329,7 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 | `PRICE_CACHE_MINUTES` | `15` | How long a quote is reused |
 | `DATABASE_URL` | `sqlite:///investtrack.db` | Any SQLAlchemy URL, e.g. PostgreSQL |
 | `API_URL` | `http://localhost:8000` | Where the frontend's dev server forwards `/api` (read by `npm run dev`) |
+| `WEB_DIST` | *(empty)* | The built web app (`web/dist`) for the API to serve; set in the Docker image |
 
 ## Roadmap
 
@@ -325,7 +348,7 @@ Every route except `/health`, `/auth/register` and `/auth/login` needs `Authoriz
 - [x] **v0.6:** import B3 trade statements
 - [x] **v0.7:** partial redemptions and IPCA+ fixed income, editing operations, login rate limiting
 - [x] **v1.0:** React + TypeScript frontend, typed from the API's OpenAPI schema
-- [ ] Cloud deployment (Fly.io)
+- [x] **v1.0:** deployment with Docker on Fly.io, session in an HttpOnly cookie
 
 ## License
 

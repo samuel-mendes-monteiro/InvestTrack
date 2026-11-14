@@ -64,3 +64,12 @@ jobs:
 
       - name: Build
         run: npx vite build
+
+  docker:
+    # The deployed image: if it doesn't build, the deploy would fail.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t investtrack .

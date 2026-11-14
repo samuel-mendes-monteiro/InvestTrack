@@ -113,7 +113,8 @@ class UserOut(BaseModel):
 
 
 class SessionOut(BaseModel):
-    token: str = Field(description='Send as "Authorization: Bearer <token>"')
+    # The token itself goes only in the HttpOnly cookie, never in the body:
+    # a script that can read responses still can't read the session.
     expires_at: datetime
 
 

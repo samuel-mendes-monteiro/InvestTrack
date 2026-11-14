@@ -530,3 +530,8 @@ ul.small {
   opacity: 0.5;
   transition: opacity 0.2s;
 }
+
+.center {
+  padding-top: 64px;
+  text-align: center;
+}

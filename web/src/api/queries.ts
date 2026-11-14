@@ -15,11 +15,11 @@ export const keys = {
 } as const
 
 export function usePortfolio() {
-  return useQuery({ queryKey: keys.portfolio, queryFn: () => call(api.GET('/portfolio')) })
+  return useQuery({ queryKey: keys.portfolio, queryFn: () => call(api.GET('/api/portfolio')) })
 }
 
 export function useOperations() {
-  return useQuery({ queryKey: keys.operations, queryFn: () => call(api.GET('/operations')) })
+  return useQuery({ queryKey: keys.operations, queryFn: () => call(api.GET('/api/operations')) })
 }
 
 /**
@@ -36,7 +36,7 @@ function useInvalidateAll() {
 export function useCreateOperation() {
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: (body: OperationInput) => call(api.POST('/operations', { body })),
+    mutationFn: (body: OperationInput) => call(api.POST('/api/operations', { body })),
     onSuccess: invalidate,
   })
 }
@@ -45,7 +45,7 @@ export function useUpdateOperation() {
   const invalidate = useInvalidateAll()
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: OperationInput }) =>
-      call(api.PUT('/operations/{operation_id}', { params: { path: { operation_id: id } }, body })),
+      call(api.PUT('/api/operations/{operation_id}', { params: { path: { operation_id: id } }, body })),
     onSuccess: invalidate,
   })
 }
@@ -54,7 +54,7 @@ export function useDeleteOperation() {
   const invalidate = useInvalidateAll()
   return useMutation({
     mutationFn: (id: number) =>
-      call(api.DELETE('/operations/{operation_id}', { params: { path: { operation_id: id } } })),
+      call(api.DELETE('/api/operations/{operation_id}', { params: { path: { operation_id: id } } })),
     onSuccess: invalidate,
   })
 }
@@ -63,13 +63,13 @@ export type Income = Schemas['IncomeOut']
 export type IncomeInput = Schemas['IncomeCreate']
 
 export function useIncomes() {
-  return useQuery({ queryKey: ['income'], queryFn: () => call(api.GET('/income')) })
+  return useQuery({ queryKey: ['income'], queryFn: () => call(api.GET('/api/income')) })
 }
 
 export function useMonthlyIncome(year: number | null) {
   return useQuery({
     queryKey: ['income', 'monthly', year],
-    queryFn: () => call(api.GET('/income/monthly', { params: { query: { year: year! } } })),
+    queryFn: () => call(api.GET('/api/income/monthly', { params: { query: { year: year! } } })),
     enabled: year != null, // waits until there is a year to ask for
   })
 }
@@ -77,7 +77,7 @@ export function useMonthlyIncome(year: number | null) {
 export function useCreateIncome() {
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: (body: IncomeInput) => call(api.POST('/income', { body })),
+    mutationFn: (body: IncomeInput) => call(api.POST('/api/income', { body })),
     onSuccess: invalidate,
   })
 }
@@ -85,7 +85,7 @@ export function useCreateIncome() {
 export function useDeleteIncome() {
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: (id: number) => call(api.DELETE('/income/{income_id}', { params: { path: { income_id: id } } })),
+    mutationFn: (id: number) => call(api.DELETE('/api/income/{income_id}', { params: { path: { income_id: id } } })),
     onSuccess: invalidate,
   })
 }
@@ -93,7 +93,7 @@ export function useDeleteIncome() {
 export type StockEvent = Schemas['StockEventOut']
 
 export function useStockEvents() {
-  return useQuery({ queryKey: ['stock-events'], queryFn: () => call(api.GET('/stock-events')) })
+  return useQuery({ queryKey: ['stock-events'], queryFn: () => call(api.GET('/api/stock-events')) })
 }
 
 const bonusPath = (e: StockEvent) => ({ params: { path: { ticker: e.ticker, record_date: e.record_date } } })
@@ -102,7 +102,7 @@ export function useSetBonusCost() {
   const invalidate = useInvalidateAll()
   return useMutation({
     mutationFn: ({ event, unitCost }: { event: StockEvent; unitCost: string }) =>
-      call(api.PUT('/stock-events/{ticker}/{record_date}/unit-cost', { ...bonusPath(event), body: { unit_cost: unitCost } })),
+      call(api.PUT('/api/stock-events/{ticker}/{record_date}/unit-cost', { ...bonusPath(event), body: { unit_cost: unitCost } })),
     onSuccess: invalidate,
   })
 }
@@ -110,7 +110,7 @@ export function useSetBonusCost() {
 export function useDeleteBonusCost() {
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: (event: StockEvent) => call(api.DELETE('/stock-events/{ticker}/{record_date}/unit-cost', bonusPath(event))),
+    mutationFn: (event: StockEvent) => call(api.DELETE('/api/stock-events/{ticker}/{record_date}/unit-cost', bonusPath(event))),
     onSuccess: invalidate,
   })
 }
@@ -121,7 +121,7 @@ export type FixedIncomeInput = Schemas['FixedIncomeCreate']
 export function useFixedIncome() {
   return useQuery({
     queryKey: ['fixed-income'],
-    queryFn: () => call(api.GET('/fixed-income')),
+    queryFn: () => call(api.GET('/api/fixed-income')),
     // The API syncs the CDI in the background; until it lands, values are
     // unknown (as_of null). Ask again every few seconds instead of telling the
     // user to reload, and stop as soon as everything has a value.
@@ -134,7 +134,7 @@ const investment = (id: number) => ({ params: { path: { investment_id: id } } })
 export function useCreateFixedIncome() {
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: (body: FixedIncomeInput) => call(api.POST('/fixed-income', { body })),
+    mutationFn: (body: FixedIncomeInput) => call(api.POST('/api/fixed-income', { body })),
     onSuccess: invalidate,
   })
 }
@@ -144,7 +144,7 @@ export function useRedeem() {
   const invalidate = useInvalidateAll()
   return useMutation({
     mutationFn: ({ id, day }: { id: number; day: string | null }) =>
-      call(api.PUT('/fixed-income/{investment_id}/redemption', { ...investment(id), body: { redeemed_on: day } })),
+      call(api.PUT('/api/fixed-income/{investment_id}/redemption', { ...investment(id), body: { redeemed_on: day } })),
     onSuccess: invalidate,
   })
 }
@@ -152,7 +152,7 @@ export function useRedeem() {
 export function useDeleteFixedIncome() {
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: (id: number) => call(api.DELETE('/fixed-income/{investment_id}', investment(id))),
+    mutationFn: (id: number) => call(api.DELETE('/api/fixed-income/{investment_id}', investment(id))),
     onSuccess: invalidate,
   })
 }
@@ -161,7 +161,7 @@ export function useAddPartialRedemption() {
   const invalidate = useInvalidateAll()
   return useMutation({
     mutationFn: ({ id, date, gross }: { id: number; date: string; gross: string }) =>
-      call(api.POST('/fixed-income/{investment_id}/partial-redemptions', { ...investment(id), body: { date, gross } })),
+      call(api.POST('/api/fixed-income/{investment_id}/partial-redemptions', { ...investment(id), body: { date, gross } })),
     onSuccess: invalidate,
   })
 }
@@ -171,7 +171,7 @@ export function useDeletePartialRedemption() {
   return useMutation({
     mutationFn: ({ id, redemptionId }: { id: number; redemptionId: number }) =>
       call(
-        api.DELETE('/fixed-income/{investment_id}/partial-redemptions/{redemption_id}', {
+        api.DELETE('/api/fixed-income/{investment_id}/partial-redemptions/{redemption_id}', {
           params: { path: { investment_id: id, redemption_id: redemptionId } },
         }),
       ),
@@ -188,7 +188,7 @@ const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
  * multipart form. The schema types that body as a string (OpenAPI's
  * "binary"); the File goes through untouched, with the spreadsheet's type.
  */
-function sendStatement(path: '/imports/b3/preview' | '/imports/b3', file: File) {
+function sendStatement(path: '/api/imports/b3/preview' | '/api/imports/b3', file: File) {
   return call(
     api.POST(path, {
       body: file as unknown as string,
@@ -200,12 +200,12 @@ function sendStatement(path: '/imports/b3/preview' | '/imports/b3', file: File) 
 
 /** What importing would add. A mutation, not a query: the file is the input, and nothing is cached. */
 export function usePreviewImport() {
-  return useMutation({ mutationFn: (file: File) => sendStatement('/imports/b3/preview', file) })
+  return useMutation({ mutationFn: (file: File) => sendStatement('/api/imports/b3/preview', file) })
 }
 
 export function useImport() {
   const invalidate = useInvalidateAll()
-  return useMutation({ mutationFn: (file: File) => sendStatement('/imports/b3', file), onSuccess: invalidate })
+  return useMutation({ mutationFn: (file: File) => sendStatement('/api/imports/b3', file), onSuccess: invalidate })
 }
 
 export type Period = Schemas['Period']
@@ -213,7 +213,7 @@ export type Period = Schemas['Period']
 export function usePerformance(period: Period) {
   return useQuery({
     queryKey: ['performance', period],
-    queryFn: () => call(api.GET('/performance', { params: { query: { period } } })),
+    queryFn: () => call(api.GET('/api/performance', { params: { query: { period } } })),
     // While another period loads, keep showing the current one instead of
     // flashing the loading text: the buttons stay put under the user's mouse.
     placeholderData: keepPreviousData,

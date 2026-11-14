@@ -1392,15 +1392,9 @@
             "format": "date-time",
             "title": "Expires At",
             "type": "string"
-          },
-          "token": {
-            "description": "Send as \"Authorization: Bearer <token>\"",
-            "title": "Token",
-            "type": "string"
           }
         },
         "required": [
-          "token",
           "expires_at"
         ],
         "title": "SessionOut",
@@ -1563,9 +1557,9 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/auth/login": {
+    "/api/auth/login": {
       "post": {
-        "operationId": "login_auth_login_post",
+        "operationId": "login_api_auth_login_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1624,9 +1618,9 @@
         ]
       }
     },
-    "/auth/logout": {
+    "/api/auth/logout": {
       "post": {
-        "operationId": "logout_auth_logout_post",
+        "operationId": "logout_api_auth_logout_post",
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -1638,9 +1632,9 @@
         ]
       }
     },
-    "/auth/me": {
+    "/api/auth/me": {
       "get": {
-        "operationId": "me_auth_me_get",
+        "operationId": "me_api_auth_me_get",
         "responses": {
           "200": {
             "content": {
@@ -1659,10 +1653,10 @@
         ]
       }
     },
-    "/auth/register": {
+    "/api/auth/register": {
       "post": {
         "description": "Create an account. The first account adopts data from before v0.5.",
-        "operationId": "register_auth_register_post",
+        "operationId": "register_api_auth_register_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1711,10 +1705,10 @@
         ]
       }
     },
-    "/fixed-income": {
+    "/api/fixed-income": {
       "get": {
         "description": "Each investment valued at its last day (today, redemption or maturity).",
-        "operationId": "get_fixed_income_fixed_income_get",
+        "operationId": "get_fixed_income_api_fixed_income_get",
         "responses": {
           "200": {
             "content": {
@@ -1723,7 +1717,7 @@
                   "items": {
                     "$ref": "#/components/schemas/FixedIncomeOut"
                   },
-                  "title": "Response Get Fixed Income Fixed Income Get",
+                  "title": "Response Get Fixed Income Api Fixed Income Get",
                   "type": "array"
                 }
               }
@@ -1737,7 +1731,7 @@
         ]
       },
       "post": {
-        "operationId": "create_fixed_income_fixed_income_post",
+        "operationId": "create_fixed_income_api_fixed_income_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1776,9 +1770,9 @@
         ]
       }
     },
-    "/fixed-income/{investment_id}": {
+    "/api/fixed-income/{investment_id}": {
       "delete": {
-        "operationId": "delete_fixed_income_fixed_income__investment_id__delete",
+        "operationId": "delete_fixed_income_api_fixed_income__investment_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -1821,10 +1815,10 @@
         ]
       }
     },
-    "/fixed-income/{investment_id}/partial-redemptions": {
+    "/api/fixed-income/{investment_id}/partial-redemptions": {
       "post": {
         "description": "Withdraw part of the money; the rest keeps running.",
-        "operationId": "add_partial_redemption_fixed_income__investment_id__partial_redemptions_post",
+        "operationId": "add_partial_redemption_api_fixed_income__investment_id__partial_redemptions_post",
         "parameters": [
           {
             "in": "path",
@@ -1884,9 +1878,9 @@
         ]
       }
     },
-    "/fixed-income/{investment_id}/partial-redemptions/{redemption_id}": {
+    "/api/fixed-income/{investment_id}/partial-redemptions/{redemption_id}": {
       "delete": {
-        "operationId": "delete_partial_redemption_fixed_income__investment_id__partial_redemptions__redemption_id__delete",
+        "operationId": "delete_partial_redemption_api_fixed_income__investment_id__partial_redemptions__redemption_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -1945,10 +1939,10 @@
         ]
       }
     },
-    "/fixed-income/{investment_id}/redemption": {
+    "/api/fixed-income/{investment_id}/redemption": {
       "put": {
         "description": "Early redemption (the whole investment), or null to undo it.",
-        "operationId": "redeem_fixed_income_fixed_income__investment_id__redemption_put",
+        "operationId": "redeem_fixed_income_api_fixed_income__investment_id__redemption_put",
         "parameters": [
           {
             "in": "path",
@@ -2008,9 +2002,9 @@
         ]
       }
     },
-    "/health": {
+    "/api/health": {
       "get": {
-        "operationId": "health_health_get",
+        "operationId": "health_api_health_get",
         "responses": {
           "200": {
             "content": {
@@ -2019,7 +2013,7 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response Health Health Get",
+                  "title": "Response Health Api Health Get",
                   "type": "object"
                 }
               }
@@ -2033,10 +2027,10 @@
         ]
       }
     },
-    "/imports/b3": {
+    "/api/imports/b3": {
       "post": {
         "description": "Add the statement's new trades, all in one transaction.\n\nDuplicates are left out and rejected tickers are not imported. The\nfile is sent again instead of reusing the preview: the server keeps\nno state between the two calls.",
-        "operationId": "import_b3_imports_b3_post",
+        "operationId": "import_b3_api_imports_b3_post",
         "requestBody": {
           "content": {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
@@ -2086,10 +2080,10 @@
         ]
       }
     },
-    "/imports/b3/preview": {
+    "/api/imports/b3/preview": {
       "post": {
         "description": "What importing the statement would add. Nothing is saved.",
-        "operationId": "preview_b3_import_imports_b3_preview_post",
+        "operationId": "preview_b3_import_api_imports_b3_preview_post",
         "requestBody": {
           "content": {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
@@ -2139,10 +2133,10 @@
         ]
       }
     },
-    "/income": {
+    "/api/income": {
       "get": {
         "description": "Computed income from B3 events plus manual entries, including pending ones.",
-        "operationId": "list_income_income_get",
+        "operationId": "list_income_api_income_get",
         "parameters": [
           {
             "description": "Filter by ticker",
@@ -2189,7 +2183,7 @@
                   "items": {
                     "$ref": "#/components/schemas/IncomeOut"
                   },
-                  "title": "Response List Income Income Get",
+                  "title": "Response List Income Api Income Get",
                   "type": "array"
                 }
               }
@@ -2213,7 +2207,7 @@
         ]
       },
       "post": {
-        "operationId": "create_income_income_post",
+        "operationId": "create_income_api_income_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2252,10 +2246,10 @@
         ]
       }
     },
-    "/income/monthly": {
+    "/api/income/monthly": {
       "get": {
         "description": "Income already received, per month. Pending income is not included.",
-        "operationId": "income_per_month_income_monthly_get",
+        "operationId": "income_per_month_api_income_monthly_get",
         "parameters": [
           {
             "description": "Only this year",
@@ -2284,7 +2278,7 @@
                   "items": {
                     "$ref": "#/components/schemas/MonthlyIncomeOut"
                   },
-                  "title": "Response Income Per Month Income Monthly Get",
+                  "title": "Response Income Per Month Api Income Monthly Get",
                   "type": "array"
                 }
               }
@@ -2308,9 +2302,9 @@
         ]
       }
     },
-    "/income/{income_id}": {
+    "/api/income/{income_id}": {
       "delete": {
-        "operationId": "delete_income_income__income_id__delete",
+        "operationId": "delete_income_api_income__income_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -2353,9 +2347,9 @@
         ]
       }
     },
-    "/operations": {
+    "/api/operations": {
       "get": {
-        "operationId": "list_operations_operations_get",
+        "operationId": "list_operations_api_operations_get",
         "parameters": [
           {
             "description": "Filter by ticker",
@@ -2384,7 +2378,7 @@
                   "items": {
                     "$ref": "#/components/schemas/OperationOut"
                   },
-                  "title": "Response List Operations Operations Get",
+                  "title": "Response List Operations Api Operations Get",
                   "type": "array"
                 }
               }
@@ -2408,7 +2402,7 @@
         ]
       },
       "post": {
-        "operationId": "create_operation_operations_post",
+        "operationId": "create_operation_api_operations_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2447,9 +2441,9 @@
         ]
       }
     },
-    "/operations/{operation_id}": {
+    "/api/operations/{operation_id}": {
       "delete": {
-        "operationId": "delete_operation_operations__operation_id__delete",
+        "operationId": "delete_operation_api_operations__operation_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -2503,7 +2497,7 @@
       },
       "put": {
         "description": "Replace every field of an operation, e.g. to add the fees of an\nimported trade. Same body as creating one; the id stays the same.",
-        "operationId": "update_operation_operations__operation_id__put",
+        "operationId": "update_operation_api_operations__operation_id__put",
         "parameters": [
           {
             "in": "path",
@@ -2573,10 +2567,10 @@
         ]
       }
     },
-    "/performance": {
+    "/api/performance": {
       "get": {
         "description": "Time-weighted return since the first trade, against CDI and Ibovespa.\n\nAnswers right away with the history already stored. If something is\nmissing, it is downloaded in the background and `syncing` is true.\nWith a period, every series starts at 0% on the close before it.",
-        "operationId": "performance_performance_get",
+        "operationId": "performance_api_performance_get",
         "parameters": [
           {
             "description": "Only the last month, 6 months, year, or everything",
@@ -2618,9 +2612,9 @@
         ]
       }
     },
-    "/portfolio": {
+    "/api/portfolio": {
       "get": {
-        "operationId": "get_portfolio_portfolio_get",
+        "operationId": "get_portfolio_api_portfolio_get",
         "responses": {
           "200": {
             "content": {
@@ -2639,10 +2633,10 @@
         ]
       }
     },
-    "/stock-events": {
+    "/api/stock-events": {
       "get": {
         "description": "Splits, reverse splits and bonus shares that changed one of your positions.",
-        "operationId": "list_stock_events_stock_events_get",
+        "operationId": "list_stock_events_api_stock_events_get",
         "responses": {
           "200": {
             "content": {
@@ -2651,7 +2645,7 @@
                   "items": {
                     "$ref": "#/components/schemas/StockEventOut"
                   },
-                  "title": "Response List Stock Events Stock Events Get",
+                  "title": "Response List Stock Events Api Stock Events Get",
                   "type": "array"
                 }
               }
@@ -2665,10 +2659,10 @@
         ]
       }
     },
-    "/stock-events/{ticker}/{record_date}/unit-cost": {
+    "/api/stock-events/{ticker}/{record_date}/unit-cost": {
       "delete": {
         "description": "Back to zero cost.",
-        "operationId": "delete_bonus_cost_stock_events__ticker___record_date__unit_cost_delete",
+        "operationId": "delete_bonus_cost_api_stock_events__ticker___record_date__unit_cost_delete",
         "parameters": [
           {
             "in": "path",
@@ -2712,7 +2706,7 @@
       },
       "put": {
         "description": "Attributed cost (custo atribuído) of bonus shares, from the company's notice.",
-        "operationId": "set_bonus_cost_stock_events__ticker___record_date__unit_cost_put",
+        "operationId": "set_bonus_cost_api_stock_events__ticker___record_date__unit_cost_put",
         "parameters": [
           {
             "in": "path",

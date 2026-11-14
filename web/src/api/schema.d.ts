@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/auth/login": {
+    "/api/auth/login": {
         parameters: {
             query?: never;
             header?: never;
@@ -14,14 +14,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Login */
-        post: operations["login_auth_login_post"];
+        post: operations["login_api_auth_login_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/auth/logout": {
+    "/api/auth/logout": {
         parameters: {
             query?: never;
             header?: never;
@@ -31,14 +31,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Logout */
-        post: operations["logout_auth_logout_post"];
+        post: operations["logout_api_auth_logout_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/auth/me": {
+    "/api/auth/me": {
         parameters: {
             query?: never;
             header?: never;
@@ -46,7 +46,7 @@ export interface paths {
             cookie?: never;
         };
         /** Me */
-        get: operations["me_auth_me_get"];
+        get: operations["me_api_auth_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -55,7 +55,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/register": {
+    "/api/auth/register": {
         parameters: {
             query?: never;
             header?: never;
@@ -68,14 +68,14 @@ export interface paths {
          * Register
          * @description Create an account. The first account adopts data from before v0.5.
          */
-        post: operations["register_auth_register_post"];
+        post: operations["register_api_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/fixed-income": {
+    "/api/fixed-income": {
         parameters: {
             query?: never;
             header?: never;
@@ -86,17 +86,17 @@ export interface paths {
          * Get Fixed Income
          * @description Each investment valued at its last day (today, redemption or maturity).
          */
-        get: operations["get_fixed_income_fixed_income_get"];
+        get: operations["get_fixed_income_api_fixed_income_get"];
         put?: never;
         /** Create Fixed Income */
-        post: operations["create_fixed_income_fixed_income_post"];
+        post: operations["create_fixed_income_api_fixed_income_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/fixed-income/{investment_id}": {
+    "/api/fixed-income/{investment_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -107,13 +107,13 @@ export interface paths {
         put?: never;
         post?: never;
         /** Delete Fixed Income */
-        delete: operations["delete_fixed_income_fixed_income__investment_id__delete"];
+        delete: operations["delete_fixed_income_api_fixed_income__investment_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/fixed-income/{investment_id}/partial-redemptions": {
+    "/api/fixed-income/{investment_id}/partial-redemptions": {
         parameters: {
             query?: never;
             header?: never;
@@ -126,14 +126,14 @@ export interface paths {
          * Add Partial Redemption
          * @description Withdraw part of the money; the rest keeps running.
          */
-        post: operations["add_partial_redemption_fixed_income__investment_id__partial_redemptions_post"];
+        post: operations["add_partial_redemption_api_fixed_income__investment_id__partial_redemptions_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/fixed-income/{investment_id}/partial-redemptions/{redemption_id}": {
+    "/api/fixed-income/{investment_id}/partial-redemptions/{redemption_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -144,13 +144,13 @@ export interface paths {
         put?: never;
         post?: never;
         /** Delete Partial Redemption */
-        delete: operations["delete_partial_redemption_fixed_income__investment_id__partial_redemptions__redemption_id__delete"];
+        delete: operations["delete_partial_redemption_api_fixed_income__investment_id__partial_redemptions__redemption_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/fixed-income/{investment_id}/redemption": {
+    "/api/fixed-income/{investment_id}/redemption": {
         parameters: {
             query?: never;
             header?: never;
@@ -162,7 +162,7 @@ export interface paths {
          * Redeem Fixed Income
          * @description Early redemption (the whole investment), or null to undo it.
          */
-        put: operations["redeem_fixed_income_fixed_income__investment_id__redemption_put"];
+        put: operations["redeem_fixed_income_api_fixed_income__investment_id__redemption_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -170,7 +170,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/health": {
+    "/api/health": {
         parameters: {
             query?: never;
             header?: never;
@@ -178,7 +178,7 @@ export interface paths {
             cookie?: never;
         };
         /** Health */
-        get: operations["health_health_get"];
+        get: operations["health_api_health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -187,7 +187,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/imports/b3": {
+    "/api/imports/b3": {
         parameters: {
             query?: never;
             header?: never;
@@ -204,14 +204,14 @@ export interface paths {
          *     file is sent again instead of reusing the preview: the server keeps
          *     no state between the two calls.
          */
-        post: operations["import_b3_imports_b3_post"];
+        post: operations["import_b3_api_imports_b3_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/imports/b3/preview": {
+    "/api/imports/b3/preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -224,14 +224,14 @@ export interface paths {
          * Preview B3 Import
          * @description What importing the statement would add. Nothing is saved.
          */
-        post: operations["preview_b3_import_imports_b3_preview_post"];
+        post: operations["preview_b3_import_api_imports_b3_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/income": {
+    "/api/income": {
         parameters: {
             query?: never;
             header?: never;
@@ -242,17 +242,17 @@ export interface paths {
          * List Income
          * @description Computed income from B3 events plus manual entries, including pending ones.
          */
-        get: operations["list_income_income_get"];
+        get: operations["list_income_api_income_get"];
         put?: never;
         /** Create Income */
-        post: operations["create_income_income_post"];
+        post: operations["create_income_api_income_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/income/monthly": {
+    "/api/income/monthly": {
         parameters: {
             query?: never;
             header?: never;
@@ -263,7 +263,7 @@ export interface paths {
          * Income Per Month
          * @description Income already received, per month. Pending income is not included.
          */
-        get: operations["income_per_month_income_monthly_get"];
+        get: operations["income_per_month_api_income_monthly_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -272,7 +272,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/income/{income_id}": {
+    "/api/income/{income_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -283,13 +283,13 @@ export interface paths {
         put?: never;
         post?: never;
         /** Delete Income */
-        delete: operations["delete_income_income__income_id__delete"];
+        delete: operations["delete_income_api_income__income_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/operations": {
+    "/api/operations": {
         parameters: {
             query?: never;
             header?: never;
@@ -297,17 +297,17 @@ export interface paths {
             cookie?: never;
         };
         /** List Operations */
-        get: operations["list_operations_operations_get"];
+        get: operations["list_operations_api_operations_get"];
         put?: never;
         /** Create Operation */
-        post: operations["create_operation_operations_post"];
+        post: operations["create_operation_api_operations_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/operations/{operation_id}": {
+    "/api/operations/{operation_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -320,16 +320,16 @@ export interface paths {
          * @description Replace every field of an operation, e.g. to add the fees of an
          *     imported trade. Same body as creating one; the id stays the same.
          */
-        put: operations["update_operation_operations__operation_id__put"];
+        put: operations["update_operation_api_operations__operation_id__put"];
         post?: never;
         /** Delete Operation */
-        delete: operations["delete_operation_operations__operation_id__delete"];
+        delete: operations["delete_operation_api_operations__operation_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/performance": {
+    "/api/performance": {
         parameters: {
             query?: never;
             header?: never;
@@ -344,7 +344,7 @@ export interface paths {
          *     missing, it is downloaded in the background and `syncing` is true.
          *     With a period, every series starts at 0% on the close before it.
          */
-        get: operations["performance_performance_get"];
+        get: operations["performance_api_performance_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -353,7 +353,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/portfolio": {
+    "/api/portfolio": {
         parameters: {
             query?: never;
             header?: never;
@@ -361,7 +361,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Portfolio */
-        get: operations["get_portfolio_portfolio_get"];
+        get: operations["get_portfolio_api_portfolio_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -370,7 +370,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stock-events": {
+    "/api/stock-events": {
         parameters: {
             query?: never;
             header?: never;
@@ -381,7 +381,7 @@ export interface paths {
          * List Stock Events
          * @description Splits, reverse splits and bonus shares that changed one of your positions.
          */
-        get: operations["list_stock_events_stock_events_get"];
+        get: operations["list_stock_events_api_stock_events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -390,7 +390,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stock-events/{ticker}/{record_date}/unit-cost": {
+    "/api/stock-events/{ticker}/{record_date}/unit-cost": {
         parameters: {
             query?: never;
             header?: never;
@@ -402,13 +402,13 @@ export interface paths {
          * Set Bonus Cost
          * @description Attributed cost (custo atribuído) of bonus shares, from the company's notice.
          */
-        put: operations["set_bonus_cost_stock_events__ticker___record_date__unit_cost_put"];
+        put: operations["set_bonus_cost_api_stock_events__ticker___record_date__unit_cost_put"];
         post?: never;
         /**
          * Delete Bonus Cost
          * @description Back to zero cost.
          */
-        delete: operations["delete_bonus_cost_stock_events__ticker___record_date__unit_cost_delete"];
+        delete: operations["delete_bonus_cost_api_stock_events__ticker___record_date__unit_cost_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -972,11 +972,6 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
-            /**
-             * Token
-             * @description Send as "Authorization: Bearer <token>"
-             */
-            token: string;
         };
         /** SkippedRowOut */
         SkippedRowOut: {
@@ -1050,7 +1045,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    login_auth_login_post: {
+    login_api_auth_login_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1101,7 +1096,7 @@ export interface operations {
             };
         };
     };
-    logout_auth_logout_post: {
+    logout_api_auth_logout_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1119,7 +1114,7 @@ export interface operations {
             };
         };
     };
-    me_auth_me_get: {
+    me_api_auth_me_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1139,7 +1134,7 @@ export interface operations {
             };
         };
     };
-    register_auth_register_post: {
+    register_api_auth_register_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1181,7 +1176,7 @@ export interface operations {
             };
         };
     };
-    get_fixed_income_fixed_income_get: {
+    get_fixed_income_api_fixed_income_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1201,7 +1196,7 @@ export interface operations {
             };
         };
     };
-    create_fixed_income_fixed_income_post: {
+    create_fixed_income_api_fixed_income_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1234,7 +1229,7 @@ export interface operations {
             };
         };
     };
-    delete_fixed_income_fixed_income__investment_id__delete: {
+    delete_fixed_income_api_fixed_income__investment_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -1272,7 +1267,7 @@ export interface operations {
             };
         };
     };
-    add_partial_redemption_fixed_income__investment_id__partial_redemptions_post: {
+    add_partial_redemption_api_fixed_income__investment_id__partial_redemptions_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1316,7 +1311,7 @@ export interface operations {
             };
         };
     };
-    delete_partial_redemption_fixed_income__investment_id__partial_redemptions__redemption_id__delete: {
+    delete_partial_redemption_api_fixed_income__investment_id__partial_redemptions__redemption_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -1357,7 +1352,7 @@ export interface operations {
             };
         };
     };
-    redeem_fixed_income_fixed_income__investment_id__redemption_put: {
+    redeem_fixed_income_api_fixed_income__investment_id__redemption_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -1401,7 +1396,7 @@ export interface operations {
             };
         };
     };
-    health_health_get: {
+    health_api_health_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1423,7 +1418,7 @@ export interface operations {
             };
         };
     };
-    import_b3_imports_b3_post: {
+    import_b3_api_imports_b3_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1466,7 +1461,7 @@ export interface operations {
             };
         };
     };
-    preview_b3_import_imports_b3_preview_post: {
+    preview_b3_import_api_imports_b3_preview_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1509,7 +1504,7 @@ export interface operations {
             };
         };
     };
-    list_income_income_get: {
+    list_income_api_income_get: {
         parameters: {
             query?: {
                 /** @description Filter by ticker */
@@ -1543,7 +1538,7 @@ export interface operations {
             };
         };
     };
-    create_income_income_post: {
+    create_income_api_income_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1576,7 +1571,7 @@ export interface operations {
             };
         };
     };
-    income_per_month_income_monthly_get: {
+    income_per_month_api_income_monthly_get: {
         parameters: {
             query?: {
                 /** @description Only this year */
@@ -1608,7 +1603,7 @@ export interface operations {
             };
         };
     };
-    delete_income_income__income_id__delete: {
+    delete_income_api_income__income_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -1646,7 +1641,7 @@ export interface operations {
             };
         };
     };
-    list_operations_operations_get: {
+    list_operations_api_operations_get: {
         parameters: {
             query?: {
                 /** @description Filter by ticker */
@@ -1678,7 +1673,7 @@ export interface operations {
             };
         };
     };
-    create_operation_operations_post: {
+    create_operation_api_operations_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1711,7 +1706,7 @@ export interface operations {
             };
         };
     };
-    update_operation_operations__operation_id__put: {
+    update_operation_api_operations__operation_id__put: {
         parameters: {
             query?: never;
             header?: never;
@@ -1764,7 +1759,7 @@ export interface operations {
             };
         };
     };
-    delete_operation_operations__operation_id__delete: {
+    delete_operation_api_operations__operation_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -1811,7 +1806,7 @@ export interface operations {
             };
         };
     };
-    performance_performance_get: {
+    performance_api_performance_get: {
         parameters: {
             query?: {
                 /** @description Only the last month, 6 months, year, or everything */
@@ -1843,7 +1838,7 @@ export interface operations {
             };
         };
     };
-    get_portfolio_portfolio_get: {
+    get_portfolio_api_portfolio_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1863,7 +1858,7 @@ export interface operations {
             };
         };
     };
-    list_stock_events_stock_events_get: {
+    list_stock_events_api_stock_events_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1883,7 +1878,7 @@ export interface operations {
             };
         };
     };
-    set_bonus_cost_stock_events__ticker___record_date__unit_cost_put: {
+    set_bonus_cost_api_stock_events__ticker___record_date__unit_cost_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -1926,7 +1921,7 @@ export interface operations {
             };
         };
     };
-    delete_bonus_cost_stock_events__ticker___record_date__unit_cost_delete: {
+    delete_bonus_cost_api_stock_events__ticker___record_date__unit_cost_delete: {
         parameters: {
             query?: never;
             header?: never;

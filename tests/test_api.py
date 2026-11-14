@@ -7,7 +7,7 @@ import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
-from investtrack.api import create_app
+from investtrack.api import SESSION_COOKIE, create_app
 from investtrack.db import create_db_engine
 from investtrack.events import StaticEvents
 from investtrack.income import IncomeEvent, IncomeType
@@ -25,8 +25,7 @@ FAST_HASHER = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
 
 def log_in(c: TestClient, email: str = "ana@example.com", password: str = "long enough"):
     c.post("/auth/register", json={"email": email, "password": password})
-    token = c.post("/auth/login", json={"email": email, "password": password}).json()["token"]
-    c.headers["Authorization"] = f"Bearer {token}"
+    c.post("/auth/login", json={"email": email, "password": password})  # sets the cookie
     return c
 
 
@@ -47,7 +46,8 @@ def api_client(**overrides):
     }
     settings.update(overrides)
     try:
-        with TestClient(create_app(**settings)) as c:  # "with" runs the lifespan
+        # "with" runs the lifespan; the base URL lets tests write "/health" for "/api/health".
+        with TestClient(create_app(**settings), base_url="http://testserver/api") as c:
             yield log_in(c)
     finally:
         if own_engine:  # whoever creates an engine closes it
@@ -889,12 +889,17 @@ PUBLIC = {("GET", "/health"), ("POST", "/auth/register"), ("POST", "/auth/login"
 
 
 def all_routes():
-    app = create_app(password_hasher=FAST_HASHER)  # routes only: the lifespan never runs
-    for route in app.routes:
-        for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:
-            if route.path.startswith(("/docs", "/redoc", "/openapi")):
-                continue
-            yield method, route.path
+    """Every route of the API, read from its OpenAPI schema: the public list
+    of what it answers. (app.routes no longer lists the routes of an included
+    router one by one, which once made this test check nothing at all.)"""
+    schema = create_app(password_hasher=FAST_HASHER).openapi()  # the lifespan never runs
+    routes = {
+        (method.upper(), path.removeprefix("/api"))
+        for path, operations in schema["paths"].items()
+        for method in operations
+    }
+    assert len(routes) > 20, "found no routes: this test would pass without checking anything"
+    return routes
 
 
 @pytest.mark.parametrize("method, path", sorted(set(all_routes()) - PUBLIC))
@@ -903,17 +908,37 @@ def test_every_endpoint_requires_login(method, path):
     url = path.replace("{ticker}", "PETR4").replace("{record_date}", "2026-01-05")
     url = re.sub(r"\{\w+_id\}", "1", url)
     with api_client() as c:
-        c.headers.pop("Authorization")
+        c.cookies.clear()
         r = c.request(method, url, json={})
     assert r.status_code == 401
     assert r.json()["detail"]["code"] == "NOT_AUTHENTICATED"
-    assert r.headers["WWW-Authenticate"] == "Bearer"
 
 
-@pytest.mark.parametrize("header", ["Bearer made-up", "Basic YW5hOmxvbmc=", "Bearer ", "token"])
-def test_bad_authorization_headers(client, header):
-    client.headers["Authorization"] = header
+@pytest.mark.parametrize("value", ["made-up", ""])
+def test_bad_session_cookies(client, value):
+    client.cookies.set(SESSION_COOKIE, value, path="/api")
     assert client.get("/portfolio").status_code == 401
+
+
+def test_session_cookie_is_out_of_reach_of_scripts():
+    with api_client() as c:
+        r = c.post("/auth/login", json={"email": "ana@example.com", "password": "long enough"})
+    cookie = r.headers["set-cookie"]
+    assert cookie.startswith(f"{SESSION_COOKIE}=")
+    assert "HttpOnly" in cookie
+    assert "SameSite=strict" in cookie
+    assert "Path=/api" in cookie
+    assert "Secure" not in cookie  # plain http, as in development
+    assert set(r.json()) == {"expires_at"}  # the token is never in the body
+
+
+def test_session_cookie_is_secure_over_https():
+    with api_client() as c:
+        r = c.post(
+            "https://testserver/api/auth/login",
+            json={"email": "ana@example.com", "password": "long enough"},
+        )
+    assert "Secure" in r.headers["set-cookie"]
 
 
 def test_users_only_see_their_own_data(shared_engine):
@@ -987,8 +1012,12 @@ def test_too_many_failed_logins():
 
 def test_me_and_logout(client):
     assert client.get("/auth/me").json()["email"] == "ana@example.com"
-    assert client.post("/auth/logout").status_code == 204
-    assert client.get("/auth/me").status_code == 401  # the token no longer works
+    token = client.cookies[SESSION_COOKIE]
+    r = client.post("/auth/logout")
+    assert r.status_code == 204
+    assert f'{SESSION_COOKIE}=""' in r.headers["set-cookie"]  # the browser forgets it
+    client.cookies.set(SESSION_COOKIE, token, path="/api")
+    assert client.get("/auth/me").status_code == 401  # and the server too: a copy is useless
 
 
 # --- B3 statement import -----------------------------------------------------
@@ -1053,3 +1082,61 @@ def test_too_large_is_refused_before_reading(client):
     big = b"x" * (5 * 1024 * 1024 + 1)
     r = client.post("/imports/b3/preview", content=big, headers=XLSX)
     assert (r.status_code, r.json()["detail"]["code"]) == (413, "FILE_TOO_LARGE")
+
+
+# --- serving the web app -----------------------------------------------------
+
+
+@pytest.fixture
+def web_client(tmp_path):
+    """The API plus a fake build of the web app, as deployed."""
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>InvestTrack</title>")
+    (tmp_path / "assets" / "index-abc123.js").write_text("console.log(1)")
+    (tmp_path / "favicon.svg").write_text("<svg/>")
+    (tmp_path.parent / "secret.txt").write_text("outside the build")
+    engine = create_db_engine("sqlite://")
+    app = create_app(
+        engine=engine,
+        price_provider=PRICES,
+        events=StaticEvents(),
+        market_data=StaticMarketData(),
+        password_hasher=FAST_HASHER,
+        web_dir=tmp_path,
+    )
+    with TestClient(app) as c:
+        yield c
+    engine.dispose()
+
+
+@pytest.mark.parametrize("path", ["/", "/proventos", "/renda-fixa", "/rentabilidade?periodo=6M"])
+def test_every_page_of_the_app_gets_index_html(web_client, path):
+    r = web_client.get(path)
+    assert r.status_code == 200
+    assert "<title>InvestTrack</title>" in r.text
+    assert r.headers["cache-control"] == "no-cache"  # always the newest build
+
+
+def test_built_assets_are_cached_forever(web_client):
+    r = web_client.get("/assets/index-abc123.js")
+    assert r.text == "console.log(1)"
+    assert "immutable" in r.headers["cache-control"]
+    assert web_client.get("/favicon.svg").text == "<svg/>"
+
+
+def test_api_is_not_hidden_by_the_app(web_client):
+    assert web_client.get("/api/health").json() == {"status": "ok"}
+    r = web_client.get("/api/no-such-route")
+    assert r.status_code == 404  # a typo in the API is an error, not the app's HTML
+    assert r.headers["content-type"] == "application/json"
+
+
+@pytest.mark.parametrize(
+    "path", ["/../secret.txt", "/%2e%2e/secret.txt", "/assets/../../secret.txt"]
+)
+def test_no_file_outside_the_build_is_served(web_client, path):
+    assert "outside the build" not in web_client.get(path).text
+
+
+def test_without_a_build_only_the_api_answers(client):
+    assert client.get("http://testserver/").status_code == 404

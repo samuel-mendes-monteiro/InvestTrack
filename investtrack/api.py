@@ -12,11 +12,23 @@ from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Annotated
 
 from argon2 import PasswordHasher
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
@@ -109,26 +121,30 @@ def get_market_data(request: Request) -> MarketDataSource:
     return request.app.state.market_data
 
 
-def bearer_token(request: Request) -> str | None:
-    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
-    if scheme.lower() != "bearer":
-        return None
-    return token.strip() or None
+# The session travels in a cookie the page's JavaScript can't read
+# (HttpOnly), so an injected script can't steal it. SameSite=Strict keeps the
+# browser from sending it on requests started by another site, which is
+# what a CSRF attack needs; the app and the API share an origin, so it never
+# needs to cross sites.
+SESSION_COOKIE = "investtrack_session"
+
+
+def session_token(request: Request) -> str | None:
+    return request.cookies.get(SESSION_COOKIE) or None
 
 
 def get_current_user(request: Request, session: Annotated[Session, Depends(get_session)]) -> User:
-    """The logged-in user, from the "Authorization: Bearer <token>" header.
+    """The logged-in user, from the session cookie.
 
     Every endpoint with user data depends on this, so a request without a
     valid session never reaches it.
     """
-    token = bearer_token(request)
+    token = session_token(request)
     user = request.app.state.auth.user_for_token(session, token) if token else None
     if user is None:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
             {"code": "NOT_AUTHENTICATED", "message": "missing, invalid or expired session"},
-            headers={"WWW-Authenticate": "Bearer"},
         )
     return user
 
@@ -295,6 +311,32 @@ def received(incomes: list[tuple[int | None, Income]]) -> list[Income]:
 # --- app factory -------------------------------------------------------------
 
 
+def serve_web(app: FastAPI, web_dir: Path) -> None:
+    """Serve the built web app, with index.html for every other path.
+
+    The app routes in the browser (/proventos, /renda-fixa...), so reloading
+    one of those pages asks the server for a path that is not a file: it
+    must get index.html, and the React router takes it from there.
+    """
+    root = web_dir.resolve()
+    index = root / "index.html"
+    forever = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def web(path: str):
+        if path == "api" or path.startswith("api/"):  # an API typo is a 404, not the app
+            return JSONResponse({"detail": "Not Found"}, status.HTTP_404_NOT_FOUND)
+        file = (root / path).resolve()
+        if path and file.is_file() and file.is_relative_to(root):  # no ../ escapes
+            # Vite puts a hash of the content in every name under assets/, so
+            # they can be cached forever: a new build has new names.
+            if path.startswith("assets/"):
+                return FileResponse(file, headers=forever)
+            return FileResponse(file)
+        # index.html names the current assets, so it must always be fresh.
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+
 def default_price_provider(engine: Engine) -> PriceProvider:
     """Real quotes from brapi.dev, cached in the database.
 
@@ -313,9 +355,16 @@ def create_app(
     events: EventSource | None = None,
     market_data: MarketDataSource | None = None,
     password_hasher: PasswordHasher | None = None,
+    web_dir: Path | None = None,
 ) -> FastAPI:
     """Build the app. Tests pass their own engine, prices, events, history
-    and a cheap password hasher."""
+    and a cheap password hasher.
+
+    `web_dir` (or the WEB_DIST environment variable) is the built React app
+    (web/dist): served from the same origin as the API, so the browser needs
+    no CORS and the session cookie can be SameSite=Strict. In development it
+    is left out and Vite serves the app instead.
+    """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -336,14 +385,20 @@ def create_app(
         description="Portfolio tracker for the Brazilian stock market (B3).",
         version="1.0.0",
         lifespan=lifespan,
+        # Everything the API answers lives under /api; the rest of the URL
+        # space belongs to the web app (see serve_web below).
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url=None,
     )
+    api = APIRouter(prefix="/api")
 
-    @app.get("/health", tags=["meta"])
+    @api.get("/health", tags=["meta"])
     def health(session: SessionDep) -> dict[str, str]:
         session.execute(text("SELECT 1"))  # fails if the database is unreachable
         return {"status": "ok"}
 
-    @app.post(
+    @api.post(
         "/auth/register",
         status_code=status.HTTP_201_CREATED,
         tags=["auth"],
@@ -364,7 +419,7 @@ def create_app(
             raise api_error(422, "WEAK_PASSWORD", e) from e
         return UserOut(id=user.id, email=user.email)
 
-    @app.post(
+    @api.post(
         "/auth/login",
         tags=["auth"],
         responses={
@@ -372,7 +427,9 @@ def create_app(
             429: {"model": ErrorOut, "description": "Too many failed attempts"},
         },
     )
-    def login(payload: Credentials, session: SessionDep, request: Request) -> SessionOut:
+    def login(
+        payload: Credentials, session: SessionDep, request: Request, response: Response
+    ) -> SessionOut:
         # Behind a reverse proxy this is the proxy's address, unless uvicorn
         # runs with --proxy-headers (it then trusts X-Forwarded-For).
         ip = request.client.host if request.client else ""
@@ -387,17 +444,29 @@ def create_app(
             error.detail["retry_after"] = e.retry_after
             error.headers = {"Retry-After": str(e.retry_after)}  # the standard header
             raise error from e
-        return SessionOut(token=token, expires_at=expires)
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            expires=expires,
+            httponly=True,
+            samesite="strict",
+            # Only over HTTPS when the site is on HTTPS (always, deployed);
+            # plain http://localhost in development would otherwise drop it.
+            secure=request.url.scheme == "https",
+            path="/api",  # only the API needs it, not every asset request
+        )
+        return SessionOut(expires_at=expires)
 
-    @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["auth"])
-    def logout(session: SessionDep, user: UserDep, request: Request) -> None:
-        request.app.state.auth.logout(session, bearer_token(request))
+    @api.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["auth"])
+    def logout(session: SessionDep, user: UserDep, request: Request, response: Response) -> None:
+        request.app.state.auth.logout(session, session_token(request))
+        response.delete_cookie(SESSION_COOKIE, path="/api", httponly=True, samesite="strict")
 
-    @app.get("/auth/me", tags=["auth"])
+    @api.get("/auth/me", tags=["auth"])
     def me(user: UserDep) -> UserOut:
         return UserOut(id=user.id, email=user.email)
 
-    @app.post(
+    @api.post(
         "/operations",
         status_code=status.HTTP_201_CREATED,
         tags=["operations"],
@@ -424,7 +493,7 @@ def create_app(
             raise api_error(422, "INVALID_OPERATION", e) from e
         return to_out(record)
 
-    @app.get("/operations", tags=["operations"])
+    @api.get("/operations", tags=["operations"])
     def list_operations(
         session: SessionDep,
         user: UserDep,
@@ -432,7 +501,7 @@ def create_app(
     ) -> list[OperationOut]:
         return [to_out(r) for r in repository.list_operations(session, user.id, ticker)]
 
-    @app.delete(
+    @api.delete(
         "/operations/{operation_id}",
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["operations"],
@@ -456,7 +525,7 @@ def create_app(
         except IncomeWithoutPositionError as e:
             raise api_error(409, "DELETE_ORPHANS_INCOME", e) from e
 
-    @app.put(
+    @api.put(
         "/operations/{operation_id}",
         tags=["operations"],
         responses={
@@ -500,7 +569,7 @@ def create_app(
             raise api_error(422, "INVALID_OPERATION", e) from e
         return to_out(record)
 
-    @app.get("/stock-events", tags=["operations"])
+    @api.get("/stock-events", tags=["operations"])
     def list_stock_events(
         session: SessionDep, user: UserDep, events: EventsDep
     ) -> list[StockEventOut]:
@@ -519,7 +588,7 @@ def create_app(
             for a in repository.get_applied_stock_events(session, user.id, events)
         ]
 
-    @app.put(
+    @api.put(
         "/stock-events/{ticker}/{record_date}/unit-cost",
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["operations"],
@@ -541,7 +610,7 @@ def create_app(
         except repository.StockEventNotFoundError as e:
             raise api_error(404, "STOCK_EVENT_NOT_FOUND", e) from e
 
-    @app.delete(
+    @api.delete(
         "/stock-events/{ticker}/{record_date}/unit-cost",
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["operations"],
@@ -552,7 +621,7 @@ def create_app(
         """Back to zero cost."""
         repository.delete_bonus_cost(session, user.id, ticker, record_date)
 
-    @app.post(
+    @api.post(
         "/income",
         status_code=status.HTTP_201_CREATED,
         tags=["income"],
@@ -576,7 +645,7 @@ def create_app(
             raise api_error(422, "INVALID_INCOME", e) from e
         return income_to_out(record.id, repository.income_to_domain(record))
 
-    @app.get("/income", tags=["income"])
+    @api.get("/income", tags=["income"])
     def list_income(
         session: SessionDep,
         user: UserDep,
@@ -593,7 +662,7 @@ def create_app(
             and (year is None or income.date.year == year)
         ]
 
-    @app.get("/income/monthly", tags=["income"])
+    @api.get("/income/monthly", tags=["income"])
     def income_per_month(
         session: SessionDep,
         user: UserDep,
@@ -608,7 +677,7 @@ def create_app(
         ]
         return [MonthlyIncomeOut(**vars(m)) for m in monthly_income(incomes)]
 
-    @app.delete(
+    @api.delete(
         "/income/{income_id}",
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["income"],
@@ -620,7 +689,7 @@ def create_app(
         except repository.IncomeNotFoundError as e:
             raise api_error(404, "INCOME_NOT_FOUND", e) from e
 
-    @app.get("/portfolio", tags=["portfolio"])
+    @api.get("/portfolio", tags=["portfolio"])
     def get_portfolio(
         session: SessionDep,
         user: UserDep,
@@ -713,7 +782,7 @@ def create_app(
             for r in records
         ]
 
-    @app.post(
+    @api.post(
         "/fixed-income",
         status_code=status.HTTP_201_CREATED,
         tags=["fixed income"],
@@ -736,14 +805,14 @@ def create_app(
         days, cdi, ipca = business_days(market, investment.start)
         return fixed_income_to_out(record, investment, days, cdi, ipca)
 
-    @app.get("/fixed-income", tags=["fixed income"])
+    @api.get("/fixed-income", tags=["fixed income"])
     def get_fixed_income(
         session: SessionDep, user: UserDep, market: MarketDep, background: BackgroundTasks
     ) -> list[FixedIncomeOut]:
         """Each investment valued at its last day (today, redemption or maturity)."""
         return list_fixed_income(session, user.id, market, background)
 
-    @app.put(
+    @api.put(
         "/fixed-income/{investment_id}/redemption",
         tags=["fixed income"],
         responses={
@@ -768,7 +837,7 @@ def create_app(
             record, repository.fixed_income_to_domain(record), days, cdi, ipca
         )
 
-    @app.post(
+    @api.post(
         "/fixed-income/{investment_id}/partial-redemptions",
         status_code=status.HTTP_201_CREATED,
         tags=["fixed income"],
@@ -809,7 +878,7 @@ def create_app(
             record, repository.fixed_income_to_domain(record), days, cdi, ipca
         )
 
-    @app.delete(
+    @api.delete(
         "/fixed-income/{investment_id}/partial-redemptions/{redemption_id}",
         tags=["fixed income"],
         responses={404: {"model": ErrorOut, "description": "Not found"}},
@@ -834,7 +903,7 @@ def create_app(
             record, repository.fixed_income_to_domain(record), days, cdi, ipca
         )
 
-    @app.delete(
+    @api.delete(
         "/fixed-income/{investment_id}",
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["fixed income"],
@@ -896,7 +965,7 @@ def create_app(
         422: {"model": ErrorOut, "description": "Not a B3 trade statement"},
     }
 
-    @app.post(
+    @api.post(
         "/imports/b3/preview",
         tags=["import"],
         openapi_extra=statement_body,
@@ -908,7 +977,7 @@ def create_app(
         """What importing the statement would add. Nothing is saved."""
         return statement_result(session, user, events, data, save=False)
 
-    @app.post("/imports/b3", tags=["import"], openapi_extra=statement_body, responses=import_errors)
+    @api.post("/imports/b3", tags=["import"], openapi_extra=statement_body, responses=import_errors)
     def import_b3(
         user: UserDep, data: StatementDep, session: SessionDep, events: EventsDep
     ) -> ImportOut:
@@ -920,7 +989,7 @@ def create_app(
         """
         return statement_result(session, user, events, data, save=True)
 
-    @app.get("/performance", tags=["portfolio"])
+    @api.get("/performance", tags=["portfolio"])
     def performance(
         session: SessionDep,
         user: UserDep,
@@ -1029,6 +1098,10 @@ def create_app(
             points=points,
         )
 
+    app.include_router(api)  # after the routes exist: including copies them
+    web_dir = web_dir or (Path(os.environ["WEB_DIST"]) if os.getenv("WEB_DIST") else None)
+    if web_dir is not None:
+        serve_web(app, web_dir)
     return app
 
 

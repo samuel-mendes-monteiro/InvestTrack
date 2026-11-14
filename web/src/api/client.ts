@@ -1,20 +1,16 @@
 import createClient, { type Middleware } from 'openapi-fetch'
 import { ApiError, toApiError } from './errors'
 import type { paths } from './schema'
-import { expireSession, getToken } from './session'
+import { expireSession } from './session'
 
 // Where a 401 means "wrong password", not "your session ended".
-const LOGIN_PATHS = ['/auth/login', '/auth/register']
+const LOGIN_PATHS = ['/api/auth/login', '/api/auth/register']
 
+// No header to add: the browser sends the session cookie by itself.
 const auth: Middleware = {
-  onRequest({ request }) {
-    const token = getToken()
-    if (token) request.headers.set('Authorization', `Bearer ${token}`)
-    return request
-  },
   onResponse({ response, schemaPath }) {
-    // An expired or revoked session: forget the token, and the app (which
-    // watches it through useSession) goes back to the login screen by itself.
+    // An expired or revoked session: the app (which watches the session
+    // through useSession) goes back to the login screen by itself.
     if (response.status === 401 && !LOGIN_PATHS.includes(schemaPath)) expireSession()
     return response
   },
@@ -22,9 +18,10 @@ const auth: Middleware = {
 
 // Every call is typed from the API's OpenAPI schema: a wrong path, a missing
 // field or a misread response is a compile error, not a bug found in the browser.
-// The /api prefix is the same-origin route set up in vite.config.ts.
+// Paths include /api, where the API lives; the page is on the same origin
+// (Vite forwards /api to uvicorn in development).
 export const api = createClient<paths>({
-  baseUrl: `${window.location.origin}/api`,
+  baseUrl: window.location.origin,
   // Looked up on every call (not captured once) so tests can stub fetch.
   fetch: (request) => globalThis.fetch(request),
 })
@@ -36,7 +33,7 @@ type Result<T> = { data?: T; error?: unknown; response: Response }
  * Await an api.GET/POST/... call and return its data, or throw an ApiError
  * with a Portuguese message. TanStack Query shows whatever a query throws.
  *
- *   const portfolio = await call(api.GET('/portfolio'))
+ *   const portfolio = await call(api.GET('/api/portfolio'))
  */
 export async function call<T>(request: Promise<Result<T>>): Promise<T> {
   let result: Result<T>

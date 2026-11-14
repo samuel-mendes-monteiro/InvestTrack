@@ -1,0 +1,15 @@
+# Only what the image builds from: no local environments, data or secrets.
+.git
+.github
+.claude
+.venv
+**/__pycache__
+*.egg-info
+*.db
+.env
+.coverage
+htmlcov
+tests
+docs
+web/node_modules
+web/dist

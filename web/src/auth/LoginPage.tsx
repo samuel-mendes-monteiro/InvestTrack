@@ -1,16 +1,16 @@
 import { useMutation } from '@tanstack/react-query'
 import { useId, useState, type FormEvent } from 'react'
 import { api, call } from '../api/client'
-import { setToken } from '../api/session'
+import { markLoggedIn } from '../api/session'
 
 type Tab = 'login' | 'register'
 
 async function login(email: string, password: string): Promise<void> {
-  const session = await call(api.POST('/auth/login', { body: { email, password } }))
-  setToken(session.token)
+  await call(api.POST('/api/auth/login', { body: { email, password } })) // sets the cookie
+  markLoggedIn()
 }
 
-/** Entrar / Criar conta. The app swaps to the portfolio as soon as a token exists. */
+/** Entrar / Criar conta. The app swaps to the portfolio as soon as the login succeeds. */
 export function LoginPage({ notice }: { notice: string | null }) {
   const [tab, setTab] = useState<Tab>('login')
   const id = useId()
@@ -85,7 +85,7 @@ function RegisterForm() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (password !== repeat) throw new Error('As senhas não são iguais.')
-      await call(api.POST('/auth/register', { body: { email: email.trim(), password } }))
+      await call(api.POST('/api/auth/register', { body: { email: email.trim(), password } }))
       await login(email.trim(), password) // straight in: nobody wants to type it all again
     },
     onSettled: () => {

@@ -3,7 +3,8 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router'
 import { api, call } from './api/client'
 import { keys } from './api/queries'
-import { setToken, useSession } from './api/session'
+import { ApiError } from './api/errors'
+import { markLoggedIn, markLoggedOut, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
 import { OperationForm } from './operations/OperationForm'
 
@@ -17,9 +18,49 @@ const IncomePage = lazy(() => import('./income/IncomePage').then((m) => ({ defau
 const FixedIncomePage = lazy(() => import('./fixed-income/FixedIncomePage').then((m) => ({ default: m.FixedIncomePage })))
 
 export default function App() {
-  const { token, notice } = useSession()
-  // key: a new token mounts a fresh shell, so nothing from the last session survives.
-  return token ? <Shell key={token} /> : <LoginPage notice={notice} />
+  const { status, notice, generation } = useSession()
+  if (status === 'checking') return <SessionCheck />
+  // key: each login mounts a fresh shell, so nothing from the last session survives.
+  return status === 'in' ? <Shell key={generation} /> : <LoginPage notice={notice} />
+}
+
+/**
+ * On startup, ask the API whether the browser's cookie is still a session.
+ * The cookie is HttpOnly, so this is the only way to know.
+ */
+function SessionCheck() {
+  const [failed, setFailed] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    let current = true // ignore the answer if the component is gone (StrictMode runs effects twice)
+    call(api.GET('/api/auth/me'))
+      .then(() => current && markLoggedIn())
+      .catch((e: unknown) => {
+        if (!current) return
+        if (e instanceof ApiError && e.status === 401) markLoggedOut()
+        else setFailed((e as Error).message) // API down: say so instead of showing the login
+      })
+    return () => {
+      current = false
+    }
+  }, [attempt])
+
+  if (!failed) return <p className="muted center">Carregando…</p>
+  return (
+    <main className="narrow">
+      <h1>InvestTrack</h1>
+      <p className="alert error">{failed}</p>
+      <button
+        onClick={() => {
+          setFailed(null)
+          setAttempt((n) => n + 1)
+        }}
+      >
+        Tentar de novo
+      </button>
+    </main>
+  )
 }
 
 // Each screen has its own URL, so reload, back/forward and bookmarks work.
@@ -34,7 +75,7 @@ const PAGES = [
 /** Everything behind the login. */
 function Shell() {
   const queryClient = useQueryClient()
-  const me = useQuery({ queryKey: keys.me, queryFn: () => call(api.GET('/auth/me')) })
+  const me = useQuery({ queryKey: keys.me, queryFn: () => call(api.GET('/api/auth/me')) })
   const [leaving, setLeaving] = useState(false)
   const [creating, setCreating] = useState(false)
 
@@ -45,11 +86,12 @@ function Shell() {
   async function logout() {
     setLeaving(true)
     try {
-      await call(api.POST('/auth/logout')) // revokes the token on the server
+      await call(api.POST('/api/auth/logout')) // revokes the session and deletes the cookie
     } catch {
-      // logging out locally is what matters
+      // API unreachable: the screen still goes back to the login. The cookie
+      // may then outlive this tab, but the next start asks the API again.
     }
-    setToken(null)
+    markLoggedOut()
   }
 
   return (
