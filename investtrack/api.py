@@ -51,7 +51,14 @@ from investtrack.income import (
 )
 from investtrack.market_data import CDI, IBOV, IPCA, IPCA_SINCE, MarketData, MarketDataSource
 from investtrack.models import OperationRecord, User
-from investtrack.performance import cdi_accumulated, index_return, portfolio_history
+from investtrack.performance import (
+    Period,
+    cdi_accumulated,
+    index_return,
+    portfolio_history,
+    rebase,
+    window_base,
+)
 from investtrack.portfolio import InsufficientPositionError, Operation, value_position
 from investtrack.prices import CachedPriceProvider, PriceProvider
 from investtrack.schemas import (
@@ -920,11 +927,15 @@ def create_app(
         events: EventsDep,
         market: MarketDep,
         background: BackgroundTasks,
+        period: Annotated[
+            Period, Query(description="Only the last month, 6 months, year, or everything")
+        ] = Period.ALL,
     ) -> PerformanceOut:
         """Time-weighted return since the first trade, against CDI and Ibovespa.
 
         Answers right away with the history already stored. If something is
         missing, it is downloaded in the background and `syncing` is true.
+        With a period, every series starts at 0% on the close before it.
         """
         operations, stock = repository.operations_and_stock_events(session, user.id, events)
         investments = [
@@ -981,11 +992,26 @@ def create_app(
         def pct(value: Decimal | None) -> Decimal | None:
             return None if value is None else value * 100
 
+        base = window_base([h.date for h in history], period)
+        if base is not None:
+            twr_base = next(h.twr for h in history if h.date == base)
+            history = [h for h in history if h.date >= base]
+
+            def rebased(series: dict[date, Decimal]) -> dict[date, Decimal]:
+                if base not in series:
+                    return {}
+                return {d: rebase(v, series[base]) for d, v in series.items() if d >= base}
+
+            cdi_acc, ibov_ret = rebased(cdi_acc), rebased(ibov_ret)
+            twr = {h.date: rebase(h.twr, twr_base) for h in history}
+        else:
+            twr = {h.date: h.twr for h in history}
+
         points = [
             PerformancePoint(
                 date=h.date,
                 value=h.value,
-                twr=h.twr * 100,
+                twr=twr[h.date] * 100,
                 cdi=pct(cdi_acc.get(h.date)),
                 ibovespa=pct(ibov_ret.get(h.date)),
             )
@@ -994,7 +1020,7 @@ def create_app(
         last = points[-1]
         return PerformanceOut(
             syncing=syncing,
-            start=first,
+            start=points[0].date,
             as_of=last.date,
             twr=last.twr,
             cdi=last.cdi,

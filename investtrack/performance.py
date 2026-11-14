@@ -17,11 +17,13 @@ measured from the trade price to that day's close. This is the usual
 daily approximation and is the same rule for every day.
 """
 
+import calendar
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from enum import StrEnum
 
 from investtrack.income import Income, quantity_on
 from investtrack.portfolio import ONE, ZERO, Operation, OpType, StockEvent
@@ -170,3 +172,45 @@ def index_return(values: dict[date, Decimal], days: list[date], start: date) -> 
         last = values.get(day, last)
         result[day] = last / base - 1
     return result
+
+
+# --- periods -------------------------------------------------------------------
+
+
+class Period(StrEnum):
+    MONTH = "1M"
+    SEMESTER = "6M"
+    YEAR = "1Y"
+    ALL = "ALL"
+
+
+_MONTHS = {Period.MONTH: 1, Period.SEMESTER: 6, Period.YEAR: 12}
+
+
+def months_before(day: date, months: int) -> date:
+    """The same day `months` earlier, clamped to the month's end (31/03 - 1 month = 28/02)."""
+    total = day.year * 12 + day.month - 1 - months
+    year, month = divmod(total, 12)
+    month += 1
+    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def window_base(days: list[date], period: Period) -> date | None:
+    """The close a period is measured from: the last day on or before
+    (last day - period). None for the whole history, or when the history is
+    shorter than the period, which then shows everything."""
+    if period is Period.ALL or not days:
+        return None
+    cutoff = months_before(max(days), _MONTHS[period])
+    before = [d for d in days if d <= cutoff]
+    return max(before) if before else None
+
+
+def rebase(cumulative: Decimal, base: Decimal) -> Decimal:
+    """A cumulative return (as a fraction) measured from another day instead.
+
+    TWR, accumulated CDI and an index return are all chained products of
+    daily factors, so the return between two days is the ratio of their
+    factors, exactly: (1 + R_end) / (1 + R_base) - 1.
+    """
+    return (1 + cumulative) / (1 + base) - 1

@@ -4,7 +4,15 @@ from datetime import date
 from decimal import Decimal
 
 from investtrack.income import Income, IncomeSource, IncomeType
-from investtrack.performance import cdi_accumulated, index_return, portfolio_history
+from investtrack.performance import (
+    Period,
+    cdi_accumulated,
+    index_return,
+    months_before,
+    portfolio_history,
+    rebase,
+    window_base,
+)
 from investtrack.portfolio import Operation, OpType, StockEvent, StockEventType
 
 D = [date(2026, 3, d) for d in (2, 3, 4, 5, 6)]  # Monday to Friday
@@ -119,3 +127,33 @@ def test_ibovespa_from_the_previous_close():
 
 def test_index_without_data():
     assert index_return({}, D, start=D[0]) == {}
+
+
+# --- periods -----------------------------------------------------------------
+
+
+def test_months_before_clamps_to_the_end_of_the_month():
+    assert months_before(date(2026, 11, 13), 1) == date(2026, 10, 13)
+    assert months_before(date(2026, 3, 31), 1) == date(2026, 2, 28)
+    assert months_before(date(2026, 1, 15), 12) == date(2025, 1, 15)
+    assert months_before(date(2026, 5, 31), 6) == date(2025, 11, 30)
+
+
+DAYS = [date(2026, 1, 5), date(2026, 2, 2), date(2026, 2, 4), date(2026, 3, 3)]
+
+
+def test_window_starts_at_the_last_close_before_the_period():
+    # 03/03 - 1 month = 03/02, not a trading day here: the close before is 02/02.
+    assert window_base(DAYS, Period.MONTH) == date(2026, 2, 2)
+
+
+def test_window_longer_than_the_history_shows_everything():
+    assert window_base(DAYS, Period.YEAR) is None
+    assert window_base(DAYS, Period.ALL) is None
+    assert window_base([], Period.MONTH) is None
+
+
+def test_rebase_is_exact_for_chained_returns():
+    # +10% then +20% is +32% in all; the second part alone is +20%.
+    assert rebase(Decimal("0.32"), Decimal("0.1")) == Decimal("0.2")
+    assert rebase(Decimal("0.1"), Decimal("0.1")) == 0

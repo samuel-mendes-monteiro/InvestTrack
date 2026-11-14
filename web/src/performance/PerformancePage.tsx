@@ -1,10 +1,19 @@
-import { usePerformance } from '../api/queries'
+import { useSearchParams } from 'react-router'
+import { usePerformance, type Period } from '../api/queries'
 import { Metric } from '../components/Metric'
 import { brDate, pct, toneOf, wholePct } from '../format'
+import { PERIODS } from '../labels'
 import { PerformanceChart } from './PerformanceChart'
 
 export function PerformancePage() {
-  const performance = usePerformance()
+  // The period lives in the URL (?periodo=6M): reload, back and links keep it.
+  const [params, setParams] = useSearchParams()
+  const period: Period = PERIODS.find((p) => p.value === params.get('periodo'))?.value ?? 'ALL'
+  const performance = usePerformance(period)
+
+  function choose(value: Period) {
+    setParams(value === 'ALL' ? {} : { periodo: value }, { replace: true })
+  }
 
   if (performance.isPending) return <p className="muted">Calculando a rentabilidade…</p>
   if (performance.isError) return <p className="alert error">{performance.error.message}</p>
@@ -36,7 +45,21 @@ export function PerformancePage() {
               tempo (TWR): aportes e vendas não distorcem o resultado, e os proventos contam como retorno.
             </p>
           )}
-          <PerformanceChart points={perf.points} />
+          <div className={performance.isPlaceholderData ? 'chart-updating' : undefined}>
+            <PerformanceChart points={perf.points} />
+          </div>
+          <div className="segmented-buttons" role="group" aria-label="Período">
+            {PERIODS.map((p) => (
+              <button
+                key={p.value}
+                aria-pressed={period === p.value}
+                title={p.name}
+                onClick={() => choose(p.value)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </>
       )}
     </>

@@ -46,3 +46,11 @@ export const SKIP_REASONS: Record<Schemas['SkippedRowOut']['reason'], string> = 
   UNKNOWN_TYPE: 'não é compra nem venda',
   UNREADABLE_ROW: 'linha ilegível',
 }
+
+// In button order, shortest first.
+export const PERIODS: { value: Schemas['Period']; label: string; name: string }[] = [
+  { value: '1M', label: '1M', name: 'Último mês' },
+  { value: '6M', label: '6M', name: 'Últimos 6 meses' },
+  { value: '1Y', label: '1A', name: 'Último ano' },
+  { value: 'ALL', label: 'Total', name: 'Desde a primeira operação' },
+]

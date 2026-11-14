@@ -242,7 +242,9 @@ class PerformancePoint(BaseModel):
 
 class PerformanceOut(BaseModel):
     syncing: bool = Field(description="Historical data is being downloaded; numbers may change")
-    start: date | None = Field(description="First trading day with a position")
+    start: date | None = Field(
+        description="First trading day with a position, or the close a period starts from"
+    )
     as_of: date | None = Field(description="Last day with official closing prices")
     twr: Money | None
     cdi: Money | None

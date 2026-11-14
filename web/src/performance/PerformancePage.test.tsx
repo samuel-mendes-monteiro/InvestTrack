@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { fakeApi } from '../test/fakeApi'
 import { renderWithApp } from '../test/render'
@@ -41,4 +42,31 @@ test('without trades it says how to start', async () => {
   fakeApi({ 'GET /performance': { body: performance({ points: [], twr: null, start: null, as_of: null }) } })
   renderWithApp(<PerformancePage />)
   expect(await screen.findByText('Registre uma compra para ver a rentabilidade.')).toBeInTheDocument()
+})
+
+test('the period buttons ask the API for that window', async () => {
+  const api = fakeApi({
+    'GET /performance': (request) => {
+      const period = new URL(request.url).searchParams.get('period')
+      return { body: period === '6M' ? performance({ start: '2026-05-13', twr: '20.5' }) : performance() }
+    },
+  })
+  renderWithApp(<PerformancePage />)
+  const periods = await screen.findByRole('group', { name: 'Período' })
+  expect(within(periods).getByRole('button', { name: 'Total' })).toHaveAttribute('aria-pressed', 'true')
+
+  await userEvent.click(within(periods).getByRole('button', { name: '6M' }))
+
+  await vi.waitFor(() => expect(metric('Carteira')).toHaveTextContent('+20,50%'))
+  expect(screen.getByText(/De 13\/05\/2026 a 13\/11\/2026/)).toBeInTheDocument()
+  expect(within(periods).getByRole('button', { name: '6M' })).toHaveAttribute('aria-pressed', 'true')
+  expect(api.requests.map((r) => new URL(r.url).searchParams.get('period'))).toEqual(['ALL', '6M'])
+})
+
+test('the period comes from the URL', async () => {
+  const api = fakeApi({ 'GET /performance': { body: performance() } })
+  renderWithApp(<PerformancePage />, { path: '/rentabilidade?periodo=1Y' })
+  const periods = await screen.findByRole('group', { name: 'Período' })
+  expect(within(periods).getByRole('button', { name: '1A' })).toHaveAttribute('aria-pressed', 'true')
+  expect(new URL(api.requests[0].url).searchParams.get('period')).toBe('1Y')
 })

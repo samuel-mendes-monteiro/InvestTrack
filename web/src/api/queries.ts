@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, call } from './client'
 import type { components } from './schema'
 
@@ -208,10 +208,15 @@ export function useImport() {
   return useMutation({ mutationFn: (file: File) => sendStatement('/imports/b3', file), onSuccess: invalidate })
 }
 
-export function usePerformance() {
+export type Period = Schemas['Period']
+
+export function usePerformance(period: Period) {
   return useQuery({
-    queryKey: ['performance'],
-    queryFn: () => call(api.GET('/performance')),
+    queryKey: ['performance', period],
+    queryFn: () => call(api.GET('/performance', { params: { query: { period } } })),
+    // While another period loads, keep showing the current one instead of
+    // flashing the loading text: the buttons stay put under the user's mouse.
+    placeholderData: keepPreviousData,
     // The first time, the API downloads years of B3, Ibovespa and CDI history
     // in the background (~1 min). Poll while it says so, then stop.
     refetchInterval: (query) => (query.state.data?.syncing ? 5000 : false),

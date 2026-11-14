@@ -1062,7 +1062,7 @@
                 "type": "null"
               }
             ],
-            "description": "First trading day with a position",
+            "description": "First trading day with a position, or the close a period starts from",
             "title": "Start"
           },
           "syncing": {
@@ -1146,6 +1146,16 @@
         ],
         "title": "PerformancePoint",
         "type": "object"
+      },
+      "Period": {
+        "enum": [
+          "1M",
+          "6M",
+          "1Y",
+          "ALL"
+        ],
+        "title": "Period",
+        "type": "string"
       },
       "PortfolioOut": {
         "properties": {
@@ -2565,8 +2575,21 @@
     },
     "/performance": {
       "get": {
-        "description": "Time-weighted return since the first trade, against CDI and Ibovespa.\n\nAnswers right away with the history already stored. If something is\nmissing, it is downloaded in the background and `syncing` is true.",
+        "description": "Time-weighted return since the first trade, against CDI and Ibovespa.\n\nAnswers right away with the history already stored. If something is\nmissing, it is downloaded in the background and `syncing` is true.\nWith a period, every series starts at 0% on the close before it.",
         "operationId": "performance_performance_get",
+        "parameters": [
+          {
+            "description": "Only the last month, 6 months, year, or everything",
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "ALL",
+              "description": "Only the last month, 6 months, year, or everything"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2577,6 +2600,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Performance",

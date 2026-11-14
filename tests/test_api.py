@@ -621,6 +621,65 @@ def test_performance_against_benchmarks():
     }
 
 
+LONG_HISTORY = StaticMarketData(
+    closes={
+        "PETR4": {
+            date(2026, 1, 5): Decimal("10"),
+            date(2026, 2, 2): Decimal("12"),
+            date(2026, 3, 2): Decimal("15"),
+            date(2026, 3, 3): Decimal("18"),
+        }
+    },
+    series={
+        "IBOV": {
+            date(2026, 1, 2): Decimal("100"),
+            date(2026, 1, 5): Decimal("100"),
+            date(2026, 2, 2): Decimal("200"),
+            date(2026, 3, 2): Decimal("250"),
+            date(2026, 3, 3): Decimal("300"),
+        },
+        "CDI": {date(2026, 1, 5): Decimal("1"), date(2026, 2, 2): Decimal("1"), MON: Decimal("1")},
+    },
+    last_day=TUE,
+)
+
+
+def test_performance_of_a_period_starts_at_zero():
+    with performance_client(LONG_HISTORY) as client:
+        client.post("/operations", json=op(qty="100", price="10", day="2026-01-05"))
+        whole = client.get("/performance").json()
+        month = client.get("/performance", params={"period": "1M"}).json()
+
+    assert whole["twr"] == "80.00"
+    # 03/03 - 1 month = 03/02 (3 Feb), which has no close: the window starts at 02/02's.
+    assert month["start"] == "2026-02-02"
+    assert [p["date"] for p in month["points"]] == ["2026-02-02", "2026-03-02", "2026-03-03"]
+    assert month["points"][0] == {
+        "date": "2026-02-02",
+        "value": "1200.00",
+        "twr": "0.00",
+        "cdi": "0.00",
+        "ibovespa": "0.00",
+    }
+    assert month["twr"] == "50.00"  # 18 / 12 - 1
+    assert month["ibovespa"] == "50.00"  # 300 / 200 - 1
+    assert month["cdi"] == "2.01"  # the rates of 02/02 and 02/03, earned overnight
+    assert month["pct_of_cdi"] == "2487.56"
+
+
+def test_period_longer_than_the_history_shows_everything():
+    with performance_client(LONG_HISTORY) as client:
+        client.post("/operations", json=op(qty="100", price="10", day="2026-01-05"))
+        year = client.get("/performance", params={"period": "1Y"}).json()
+    assert year["start"] == "2026-01-05"
+    assert year["twr"] == "80.00"
+
+
+def test_unknown_period_is_refused():
+    with performance_client(LONG_HISTORY) as client:
+        assert client.get("/performance", params={"period": "2Y"}).status_code == 422
+
+
 def test_performance_without_operations():
     with performance_client(HISTORY) as client:
         body = client.get("/performance").json()

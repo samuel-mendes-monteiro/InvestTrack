@@ -505,3 +505,28 @@ ul.small {
   margin: 0;
   padding-left: 20px;
 }
+
+.segmented-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.segmented-buttons button {
+  min-width: 56px;
+  padding: 5px 12px;
+  font-size: 0.9rem;
+}
+
+.segmented-buttons button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 600;
+}
+
+/* The previous period stays on screen while the next one loads. */
+.chart-updating {
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}

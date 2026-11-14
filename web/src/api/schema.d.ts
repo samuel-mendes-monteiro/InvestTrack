@@ -342,6 +342,7 @@ export interface paths {
          *
          *     Answers right away with the history already stored. If something is
          *     missing, it is downloaded in the background and `syncing` is true.
+         *     With a period, every series starts at 0% on the close before it.
          */
         get: operations["performance_performance_get"];
         put?: never;
@@ -840,7 +841,7 @@ export interface components {
             points: components["schemas"]["PerformancePoint"][];
             /**
              * Start
-             * @description First trading day with a position
+             * @description First trading day with a position, or the close a period starts from
              */
             start: string | null;
             /**
@@ -879,6 +880,11 @@ export interface components {
              */
             value: string;
         };
+        /**
+         * Period
+         * @enum {string}
+         */
+        Period: "1M" | "6M" | "1Y" | "ALL";
         /** PortfolioOut */
         PortfolioOut: {
             /** Positions */
@@ -1807,7 +1813,10 @@ export interface operations {
     };
     performance_performance_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only the last month, 6 months, year, or everything */
+                period?: components["schemas"]["Period"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1821,6 +1830,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PerformanceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
