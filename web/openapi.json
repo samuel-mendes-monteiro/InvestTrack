@@ -1,0 +1,2707 @@
+{
+  "components": {
+    "schemas": {
+      "AssetType": {
+        "enum": [
+          "STOCK",
+          "FII",
+          "ETF",
+          "BDR"
+        ],
+        "title": "AssetType",
+        "type": "string"
+      },
+      "BonusCostIn": {
+        "properties": {
+          "unit_cost": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "From the company's notice",
+            "examples": [
+              "7.82"
+            ],
+            "title": "Unit Cost"
+          }
+        },
+        "required": [
+          "unit_cost"
+        ],
+        "title": "BonusCostIn",
+        "type": "object"
+      },
+      "Credentials": {
+        "properties": {
+          "email": {
+            "examples": [
+              "ana@example.com"
+            ],
+            "maxLength": 254,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 256,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "Credentials",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "code": {
+            "examples": [
+              "INSUFFICIENT_POSITION"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "first_buy": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Buy"
+          },
+          "income_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income Date"
+          },
+          "message": {
+            "description": "English fallback text",
+            "title": "Message",
+            "type": "string"
+          },
+          "requested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorOut": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorOut",
+        "type": "object"
+      },
+      "FixedIncomeCreate": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "examples": [
+              "5000"
+            ],
+            "title": "Amount"
+          },
+          "indexer": {
+            "$ref": "#/components/schemas/Indexer"
+          },
+          "maturity": {
+            "format": "date",
+            "title": "Maturity",
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "CDB Banco X"
+            ],
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "% of CDI (110), % per year (12.5), or % per year above IPCA (6.5)",
+            "examples": [
+              "110"
+            ],
+            "title": "Rate"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "product",
+          "indexer",
+          "rate",
+          "start",
+          "maturity",
+          "amount"
+        ],
+        "title": "FixedIncomeCreate",
+        "type": "object"
+      },
+      "FixedIncomeOut": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Day of the values below; None until the CDI is known",
+            "title": "As Of"
+          },
+          "estimated": {
+            "description": "IPCA+ only: uses the last published IPCA for months not out yet",
+            "title": "Estimated",
+            "type": "boolean"
+          },
+          "gross": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross"
+          },
+          "gross_return": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gross return since the start, %",
+            "title": "Gross Return"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "indexer": {
+            "$ref": "#/components/schemas/Indexer"
+          },
+          "iof": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iof"
+          },
+          "ir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ir"
+          },
+          "maturity": {
+            "format": "date",
+            "title": "Maturity",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "net": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net"
+          },
+          "partial_redemptions": {
+            "items": {
+              "$ref": "#/components/schemas/PartialRedemptionOut"
+            },
+            "title": "Partial Redemptions",
+            "type": "array"
+          },
+          "principal": {
+            "description": "Amount invested still held, after partial redemptions",
+            "title": "Principal",
+            "type": "string"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product"
+          },
+          "rate": {
+            "title": "Rate",
+            "type": "string"
+          },
+          "redeemed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redeemed On"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "status": {
+            "description": "ACTIVE, REDEEMED or MATURED",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "product",
+          "indexer",
+          "rate",
+          "start",
+          "maturity",
+          "amount",
+          "redeemed_on",
+          "partial_redemptions",
+          "principal",
+          "status",
+          "as_of",
+          "estimated",
+          "gross",
+          "iof",
+          "ir",
+          "net",
+          "gross_return"
+        ],
+        "title": "FixedIncomeOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportOut": {
+        "properties": {
+          "duplicates": {
+            "title": "Duplicates",
+            "type": "integer"
+          },
+          "imported": {
+            "description": "False for a preview: nothing was saved",
+            "title": "Imported",
+            "type": "boolean"
+          },
+          "new": {
+            "title": "New",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "skipped_rows": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedRowOut"
+            },
+            "title": "Skipped Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "imported",
+          "new",
+          "duplicates",
+          "rejected",
+          "skipped",
+          "rows",
+          "skipped_rows"
+        ],
+        "title": "ImportOut",
+        "type": "object"
+      },
+      "ImportRowOut": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a REJECTED row can't be imported"
+          },
+          "line": {
+            "description": "Row in the spreadsheet",
+            "title": "Line",
+            "type": "integer"
+          },
+          "op_type": {
+            "$ref": "#/components/schemas/OpType"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "string"
+          },
+          "status": {
+            "description": "NEW, DUPLICATE, REJECTED, or IMPORTED after importing",
+            "title": "Status",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "status",
+          "date",
+          "op_type",
+          "ticker",
+          "quantity",
+          "price",
+          "error"
+        ],
+        "title": "ImportRowOut",
+        "type": "object"
+      },
+      "IncomeCreate": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Gross total received",
+            "examples": [
+              "120.50"
+            ],
+            "title": "Amount"
+          },
+          "date": {
+            "description": "Payment date",
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "income_type": {
+            "$ref": "#/components/schemas/IncomeType"
+          },
+          "tax": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "description": "Withheld at source",
+            "examples": [
+              "18.08"
+            ],
+            "title": "Tax"
+          },
+          "ticker": {
+            "examples": [
+              "ITSA4"
+            ],
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "income_type",
+          "date",
+          "amount"
+        ],
+        "title": "IncomeCreate",
+        "type": "object"
+      },
+      "IncomeOut": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only manual entries have an id (and can be deleted)",
+            "title": "Id"
+          },
+          "income_type": {
+            "$ref": "#/components/schemas/IncomeType"
+          },
+          "net": {
+            "title": "Net",
+            "type": "string"
+          },
+          "pending": {
+            "description": "True if the payment date hasn't arrived yet",
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shares held on the record date",
+            "title": "Quantity"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gross value per share",
+            "title": "Rate"
+          },
+          "record_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data com (computed income only)",
+            "title": "Record Date"
+          },
+          "source": {
+            "$ref": "#/components/schemas/IncomeSource"
+          },
+          "tax": {
+            "title": "Tax",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "ticker",
+          "income_type",
+          "date",
+          "pending",
+          "amount",
+          "tax",
+          "net",
+          "record_date",
+          "quantity",
+          "rate"
+        ],
+        "title": "IncomeOut",
+        "type": "object"
+      },
+      "IncomeSource": {
+        "enum": [
+          "B3",
+          "MANUAL"
+        ],
+        "title": "IncomeSource",
+        "type": "string"
+      },
+      "IncomeType": {
+        "enum": [
+          "DIVIDEND",
+          "JCP",
+          "DISTRIBUTION"
+        ],
+        "title": "IncomeType",
+        "type": "string"
+      },
+      "Indexer": {
+        "enum": [
+          "CDI",
+          "PRE",
+          "IPCA"
+        ],
+        "title": "Indexer",
+        "type": "string"
+      },
+      "MonthlyIncomeOut": {
+        "properties": {
+          "distribution": {
+            "title": "Distribution",
+            "type": "string"
+          },
+          "dividend": {
+            "title": "Dividend",
+            "type": "string"
+          },
+          "jcp": {
+            "title": "Jcp",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "net": {
+            "title": "Net",
+            "type": "string"
+          },
+          "tax": {
+            "title": "Tax",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "month",
+          "dividend",
+          "jcp",
+          "distribution",
+          "tax",
+          "net"
+        ],
+        "title": "MonthlyIncomeOut",
+        "type": "object"
+      },
+      "OpType": {
+        "enum": [
+          "BUY",
+          "SELL"
+        ],
+        "title": "OpType",
+        "type": "string"
+      },
+      "OperationCreate": {
+        "properties": {
+          "asset_type": {
+            "$ref": "#/components/schemas/AssetType",
+            "default": "STOCK",
+            "description": "Only used the first time a ticker appears"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "examples": [
+              "4.90"
+            ],
+            "title": "Fees"
+          },
+          "op_type": {
+            "$ref": "#/components/schemas/OpType"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "examples": [
+              "30.50"
+            ],
+            "title": "Price"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "examples": [
+              "100"
+            ],
+            "title": "Quantity"
+          },
+          "ticker": {
+            "examples": [
+              "PETR4"
+            ],
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "op_type",
+          "date",
+          "quantity",
+          "price"
+        ],
+        "title": "OperationCreate",
+        "type": "object"
+      },
+      "OperationOut": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "fees": {
+            "title": "Fees",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "op_type": {
+            "$ref": "#/components/schemas/OpType"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ticker",
+          "op_type",
+          "date",
+          "quantity",
+          "price",
+          "fees"
+        ],
+        "title": "OperationOut",
+        "type": "object"
+      },
+      "PartialRedemptionIn": {
+        "properties": {
+          "date": {
+            "description": "A business day after the start",
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "gross": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Amount withdrawn, before taxes",
+            "examples": [
+              "1000"
+            ],
+            "title": "Gross"
+          }
+        },
+        "required": [
+          "date",
+          "gross"
+        ],
+        "title": "PartialRedemptionIn",
+        "type": "object"
+      },
+      "PartialRedemptionOut": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "gross": {
+            "title": "Gross",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "iof": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None until that day's CDI is known",
+            "title": "Iof"
+          },
+          "ir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ir"
+          },
+          "net": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "gross",
+          "iof",
+          "ir",
+          "net"
+        ],
+        "title": "PartialRedemptionOut",
+        "type": "object"
+      },
+      "PerformanceOut": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last day with official closing prices",
+            "title": "As Of"
+          },
+          "cdi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cdi"
+          },
+          "ibovespa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ibovespa"
+          },
+          "pct_of_cdi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "TWR as a percentage of the CDI",
+            "title": "Pct Of Cdi"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PerformancePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First trading day with a position",
+            "title": "Start"
+          },
+          "syncing": {
+            "description": "Historical data is being downloaded; numbers may change",
+            "title": "Syncing",
+            "type": "boolean"
+          },
+          "twr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Twr"
+          }
+        },
+        "required": [
+          "syncing",
+          "start",
+          "as_of",
+          "twr",
+          "cdi",
+          "ibovespa",
+          "pct_of_cdi",
+          "points"
+        ],
+        "title": "PerformanceOut",
+        "type": "object"
+      },
+      "PerformancePoint": {
+        "properties": {
+          "cdi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CDI accumulated over the same period, %",
+            "title": "Cdi"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "ibovespa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ibovespa return over the same period, %",
+            "title": "Ibovespa"
+          },
+          "twr": {
+            "description": "Cumulative time-weighted return, %",
+            "title": "Twr",
+            "type": "string"
+          },
+          "value": {
+            "description": "Portfolio value at the close",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "value",
+          "twr",
+          "cdi",
+          "ibovespa"
+        ],
+        "title": "PerformancePoint",
+        "type": "object"
+      },
+      "PortfolioOut": {
+        "properties": {
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PositionOut"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PortfolioTotals"
+          }
+        },
+        "required": [
+          "positions",
+          "totals"
+        ],
+        "title": "PortfolioOut",
+        "type": "object"
+      },
+      "PortfolioTotals": {
+        "properties": {
+          "current_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Value"
+          },
+          "fixed_income": {
+            "description": "Net value of fixed income still invested",
+            "title": "Fixed Income",
+            "type": "string"
+          },
+          "income": {
+            "title": "Income",
+            "type": "string"
+          },
+          "income_pending": {
+            "description": "Announced income not paid yet",
+            "title": "Income Pending",
+            "type": "string"
+          },
+          "invested": {
+            "title": "Invested",
+            "type": "string"
+          },
+          "realized_profit": {
+            "title": "Realized Profit",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "result_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Pct"
+          }
+        },
+        "required": [
+          "invested",
+          "current_value",
+          "result",
+          "result_pct",
+          "realized_profit",
+          "income",
+          "income_pending",
+          "fixed_income"
+        ],
+        "title": "PortfolioTotals",
+        "type": "object"
+      },
+      "PositionOut": {
+        "properties": {
+          "avg_price": {
+            "title": "Avg Price",
+            "type": "string"
+          },
+          "current_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Price"
+          },
+          "current_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Value"
+          },
+          "income": {
+            "description": "Net income already received (dividends, JCP, distributions)",
+            "title": "Income",
+            "type": "string"
+          },
+          "invested": {
+            "title": "Invested",
+            "type": "string"
+          },
+          "price_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the price was fetched",
+            "title": "Price As Of"
+          },
+          "price_stale": {
+            "description": "True if the quote source failed and an old price is shown",
+            "title": "Price Stale",
+            "type": "boolean"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "string"
+          },
+          "realized_profit": {
+            "title": "Realized Profit",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "result_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Pct"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "quantity",
+          "avg_price",
+          "realized_profit",
+          "current_price",
+          "price_as_of",
+          "price_stale",
+          "invested",
+          "current_value",
+          "result",
+          "result_pct",
+          "income"
+        ],
+        "title": "PositionOut",
+        "type": "object"
+      },
+      "Product": {
+        "enum": [
+          "CDB",
+          "LCI",
+          "LCA"
+        ],
+        "title": "Product",
+        "type": "string"
+      },
+      "RedeemIn": {
+        "properties": {
+          "redeemed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None undoes an early redemption",
+            "title": "Redeemed On"
+          }
+        },
+        "required": [
+          "redeemed_on"
+        ],
+        "title": "RedeemIn",
+        "type": "object"
+      },
+      "SessionOut": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "token": {
+            "description": "Send as \"Authorization: Bearer <token>\"",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at"
+        ],
+        "title": "SessionOut",
+        "type": "object"
+      },
+      "SkippedRowOut": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "line": {
+            "title": "Line",
+            "type": "integer"
+          },
+          "reason": {
+            "description": "UNSUPPORTED_MARKET, UNKNOWN_TYPE or UNREADABLE_ROW",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "reason",
+          "detail"
+        ],
+        "title": "SkippedRowOut",
+        "type": "object"
+      },
+      "StockEventOut": {
+        "properties": {
+          "event_type": {
+            "$ref": "#/components/schemas/StockEventType"
+          },
+          "multiplier": {
+            "description": "Shares after = shares before x multiplier",
+            "title": "Multiplier",
+            "type": "string"
+          },
+          "quantity_after": {
+            "title": "Quantity After",
+            "type": "string"
+          },
+          "quantity_before": {
+            "title": "Quantity Before",
+            "type": "string"
+          },
+          "record_date": {
+            "description": "Applied at the end of this day",
+            "format": "date",
+            "title": "Record Date",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Attributed cost per bonus share, None if not informed (counts as zero)",
+            "title": "Unit Cost"
+          }
+        },
+        "required": [
+          "ticker",
+          "event_type",
+          "record_date",
+          "multiplier",
+          "quantity_before",
+          "quantity_after",
+          "unit_cost"
+        ],
+        "title": "StockEventOut",
+        "type": "object"
+      },
+      "StockEventType": {
+        "enum": [
+          "SPLIT",
+          "REVERSE_SPLIT",
+          "BONUS"
+        ],
+        "title": "StockEventType",
+        "type": "string"
+      },
+      "UserOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "UserOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Portfolio tracker for the Brazilian stock market (B3).",
+    "title": "InvestTrack API",
+    "version": "0.7.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Wrong email or password"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too many failed attempts"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "logout_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "me_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "description": "Create an account. The first account adopts data from before v0.5.",
+        "operationId": "register_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Email already registered"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Invalid email or weak password"
+          }
+        },
+        "summary": "Register",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/fixed-income": {
+      "get": {
+        "description": "Each investment valued at its last day (today, redemption or maturity).",
+        "operationId": "get_fixed_income_fixed_income_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FixedIncomeOut"
+                  },
+                  "title": "Response Get Fixed Income Fixed Income Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Fixed Income",
+        "tags": [
+          "fixed income"
+        ]
+      },
+      "post": {
+        "operationId": "create_fixed_income_fixed_income_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FixedIncomeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixedIncomeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Invalid data"
+          }
+        },
+        "summary": "Create Fixed Income",
+        "tags": [
+          "fixed income"
+        ]
+      }
+    },
+    "/fixed-income/{investment_id}": {
+      "delete": {
+        "operationId": "delete_fixed_income_fixed_income__investment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investment_id",
+            "required": true,
+            "schema": {
+              "title": "Investment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Fixed Income",
+        "tags": [
+          "fixed income"
+        ]
+      }
+    },
+    "/fixed-income/{investment_id}/partial-redemptions": {
+      "post": {
+        "description": "Withdraw part of the money; the rest keeps running.",
+        "operationId": "add_partial_redemption_fixed_income__investment_id__partial_redemptions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investment_id",
+            "required": true,
+            "schema": {
+              "title": "Investment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartialRedemptionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixedIncomeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Outside the period, value not known, or more than there is"
+          }
+        },
+        "summary": "Add Partial Redemption",
+        "tags": [
+          "fixed income"
+        ]
+      }
+    },
+    "/fixed-income/{investment_id}/partial-redemptions/{redemption_id}": {
+      "delete": {
+        "operationId": "delete_partial_redemption_fixed_income__investment_id__partial_redemptions__redemption_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investment_id",
+            "required": true,
+            "schema": {
+              "title": "Investment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "redemption_id",
+            "required": true,
+            "schema": {
+              "title": "Redemption Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixedIncomeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Partial Redemption",
+        "tags": [
+          "fixed income"
+        ]
+      }
+    },
+    "/fixed-income/{investment_id}/redemption": {
+      "put": {
+        "description": "Early redemption (the whole investment), or null to undo it.",
+        "operationId": "redeem_fixed_income_fixed_income__investment_id__redemption_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investment_id",
+            "required": true,
+            "schema": {
+              "title": "Investment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixedIncomeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Date outside the investment period"
+          }
+        },
+        "summary": "Redeem Fixed Income",
+        "tags": [
+          "fixed income"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/imports/b3": {
+      "post": {
+        "description": "Add the statement's new trades, all in one transaction.\n\nDuplicates are left out and rejected tickers are not imported. The\nfile is sent again instead of reusing the preview: the server keeps\nno state between the two calls.",
+        "operationId": "import_b3_imports_b3_post",
+        "requestBody": {
+          "content": {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The trade statement (Negociação) from B3's Área do Investidor"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "File larger than 5 MB"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not a B3 trade statement"
+          }
+        },
+        "summary": "Import B3",
+        "tags": [
+          "import"
+        ]
+      }
+    },
+    "/imports/b3/preview": {
+      "post": {
+        "description": "What importing the statement would add. Nothing is saved.",
+        "operationId": "preview_b3_import_imports_b3_preview_post",
+        "requestBody": {
+          "content": {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The trade statement (Negociação) from B3's Área do Investidor"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "File larger than 5 MB"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not a B3 trade statement"
+          }
+        },
+        "summary": "Preview B3 Import",
+        "tags": [
+          "import"
+        ]
+      }
+    },
+    "/income": {
+      "get": {
+        "description": "Computed income from B3 events plus manual entries, including pending ones.",
+        "operationId": "list_income_income_get",
+        "parameters": [
+          {
+            "description": "Filter by ticker",
+            "in": "query",
+            "name": "ticker",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by ticker",
+              "title": "Ticker"
+            }
+          },
+          {
+            "description": "Filter by payment year",
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by payment year",
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IncomeOut"
+                  },
+                  "title": "Response List Income Income Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Income",
+        "tags": [
+          "income"
+        ]
+      },
+      "post": {
+        "operationId": "create_income_income_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Invalid data, or ticker not bought by then"
+          }
+        },
+        "summary": "Create Income",
+        "tags": [
+          "income"
+        ]
+      }
+    },
+    "/income/monthly": {
+      "get": {
+        "description": "Income already received, per month. Pending income is not included.",
+        "operationId": "income_per_month_income_monthly_get",
+        "parameters": [
+          {
+            "description": "Only this year",
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this year",
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MonthlyIncomeOut"
+                  },
+                  "title": "Response Income Per Month Income Monthly Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Income Per Month",
+        "tags": [
+          "income"
+        ]
+      }
+    },
+    "/income/{income_id}": {
+      "delete": {
+        "operationId": "delete_income_income__income_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "income_id",
+            "required": true,
+            "schema": {
+              "title": "Income Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Income not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Income",
+        "tags": [
+          "income"
+        ]
+      }
+    },
+    "/operations": {
+      "get": {
+        "operationId": "list_operations_operations_get",
+        "parameters": [
+          {
+            "description": "Filter by ticker",
+            "in": "query",
+            "name": "ticker",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by ticker",
+              "title": "Ticker"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OperationOut"
+                  },
+                  "title": "Response List Operations Operations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Operations",
+        "tags": [
+          "operations"
+        ]
+      },
+      "post": {
+        "operationId": "create_operation_operations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Invalid data, or selling more than owned"
+          }
+        },
+        "summary": "Create Operation",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/operations/{operation_id}": {
+      "delete": {
+        "operationId": "delete_operation_operations__operation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Operation not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Would leave a later sale, or income, without shares"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Operation",
+        "tags": [
+          "operations"
+        ]
+      },
+      "put": {
+        "description": "Replace every field of an operation, e.g. to add the fees of an\nimported trade. Same body as creating one; the id stays the same.",
+        "operationId": "update_operation_operations__operation_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Operation not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Would leave a sale, or income, without shares"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Invalid data"
+          }
+        },
+        "summary": "Update Operation",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/performance": {
+      "get": {
+        "description": "Time-weighted return since the first trade, against CDI and Ibovespa.\n\nAnswers right away with the history already stored. If something is\nmissing, it is downloaded in the background and `syncing` is true.",
+        "operationId": "performance_performance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Performance",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/portfolio": {
+      "get": {
+        "operationId": "get_portfolio_portfolio_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Portfolio",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/stock-events": {
+      "get": {
+        "description": "Splits, reverse splits and bonus shares that changed one of your positions.",
+        "operationId": "list_stock_events_stock_events_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StockEventOut"
+                  },
+                  "title": "Response List Stock Events Stock Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Stock Events",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/stock-events/{ticker}/{record_date}/unit-cost": {
+      "delete": {
+        "description": "Back to zero cost.",
+        "operationId": "delete_bonus_cost_stock_events__ticker___record_date__unit_cost_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Record Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Bonus Cost",
+        "tags": [
+          "operations"
+        ]
+      },
+      "put": {
+        "description": "Attributed cost (custo atribuído) of bonus shares, from the company's notice.",
+        "operationId": "set_bonus_cost_stock_events__ticker___record_date__unit_cost_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Record Date",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BonusCostIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "No bonus event on that date"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Bonus Cost",
+        "tags": [
+          "operations"
+        ]
+      }
+    }
+  }
+}
