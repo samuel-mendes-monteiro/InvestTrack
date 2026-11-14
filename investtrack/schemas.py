@@ -4,7 +4,7 @@ Decimals are sent as JSON strings ("35.10"), not numbers, so a client
 never has to parse money into a float.
 """
 
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated
 
@@ -57,6 +57,8 @@ class PositionOut(BaseModel):
     avg_price: Money
     realized_profit: Money
     current_price: Money | None
+    price_as_of: datetime | None = Field(description="When the price was fetched")
+    price_stale: bool = Field(description="True if the quote source failed and an old price is shown")
     invested: Money
     current_value: Money | None
     result: Money | None

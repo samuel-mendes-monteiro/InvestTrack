@@ -71,7 +71,9 @@ Trades are processed **in date order** (not in the order they were entered), and
 - **The API token stays on the server.** The frontend never calls brapi directly.
 - **Decimals are stored as text on SQLite.** SQLite has no real decimal type, so SQLAlchemy would store `Numeric` as a float. A custom column type keeps exact values on SQLite and uses native `NUMERIC` on PostgreSQL.
 - **Money is sent as JSON strings** (`"35.10"`), not numbers, so API clients never parse it into a float. Values are rounded to 2 decimals only in the response.
-- **Quotes are cached** for about 15 minutes per ticker. If the API is down, the last known price is used.
+- **Quotes are cached** in the database for 15 minutes per ticker, so the cache survives restarts and stays within brapi's free quota. If brapi is down, the last known price is shown and flagged as stale, together with when it was fetched.
+- **Outages vs. per-ticker errors.** A timeout or 5xx pauses calls to brapi for a minute, so a portfolio with many tickers doesn't wait for one timeout per ticker. A 401/404 only affects that ticker.
+- **Tests never touch the internet.** The HTTP session, the quote source and even the clock are replaced by fakes, so tests are fast, deterministic and don't spend the API quota.
 
 ## Roadmap
 
@@ -79,7 +81,7 @@ Trades are processed **in date order** (not in the order they were entered), and
 - [x] **Stage 1:** pure calculation logic + tests
 - [x] **Stage 2:** database (SQLAlchemy)
 - [x] **Stage 3:** REST API (FastAPI)
-- [ ] **Stage 4:** live quotes (brapi) with caching
+- [x] **Stage 4:** live quotes (brapi) with caching
 - [ ] **Stage 5:** Streamlit UI
 - [ ] **Stage 6:** CI with GitHub Actions + polish
 
@@ -121,7 +123,11 @@ uvicorn investtrack.api:app --reload
 | `GET` | `/portfolio` | Positions, current prices and portfolio totals |
 | `GET` | `/health` | Health check |
 
-Prices are fixed placeholders for now; live quotes from brapi.dev come in stage 4.
+Quotes come from [brapi.dev](https://brapi.dev). To configure them, copy the example settings and add your free brapi token (without a token, only PETR4, VALE3, MGLU3 and ITUB4 work):
+
+```bash
+cp .env.example .env
+```
 
 The database URL can be changed with the `DATABASE_URL` environment variable (default: `sqlite:///investtrack.db`).
 

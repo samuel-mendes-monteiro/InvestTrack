@@ -124,6 +124,8 @@ def test_portfolio_example_from_project_doc(client):
         "avg_price": "35.00",
         "realized_profit": "750.00",
         "current_price": "38.00",
+        "price_as_of": None,
+        "price_stale": False,
         "invested": "5250.00",
         "current_value": "5700.00",
         "result": "450.00",
