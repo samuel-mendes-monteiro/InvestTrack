@@ -114,3 +114,67 @@ export function useDeleteBonusCost() {
     onSuccess: invalidate,
   })
 }
+
+export type FixedIncome = Schemas['FixedIncomeOut']
+export type FixedIncomeInput = Schemas['FixedIncomeCreate']
+
+export function useFixedIncome() {
+  return useQuery({
+    queryKey: ['fixed-income'],
+    queryFn: () => call(api.GET('/fixed-income')),
+    // The API syncs the CDI in the background; until it lands, values are
+    // unknown (as_of null). Ask again every few seconds instead of telling the
+    // user to reload, and stop as soon as everything has a value.
+    refetchInterval: (query) => (query.state.data?.some((f) => f.as_of == null) ? 3000 : false),
+  })
+}
+
+const investment = (id: number) => ({ params: { path: { investment_id: id } } })
+
+export function useCreateFixedIncome() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (body: FixedIncomeInput) => call(api.POST('/fixed-income', { body })),
+    onSuccess: invalidate,
+  })
+}
+
+/** Redeem everything on a day, or undo the redemption with null. */
+export function useRedeem() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ id, day }: { id: number; day: string | null }) =>
+      call(api.PUT('/fixed-income/{investment_id}/redemption', { ...investment(id), body: { redeemed_on: day } })),
+    onSuccess: invalidate,
+  })
+}
+
+export function useDeleteFixedIncome() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (id: number) => call(api.DELETE('/fixed-income/{investment_id}', investment(id))),
+    onSuccess: invalidate,
+  })
+}
+
+export function useAddPartialRedemption() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ id, date, gross }: { id: number; date: string; gross: string }) =>
+      call(api.POST('/fixed-income/{investment_id}/partial-redemptions', { ...investment(id), body: { date, gross } })),
+    onSuccess: invalidate,
+  })
+}
+
+export function useDeletePartialRedemption() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ id, redemptionId }: { id: number; redemptionId: number }) =>
+      call(
+        api.DELETE('/fixed-income/{investment_id}/partial-redemptions/{redemption_id}', {
+          params: { path: { investment_id: id, redemption_id: redemptionId } },
+        }),
+      ),
+    onSuccess: invalidate,
+  })
+}

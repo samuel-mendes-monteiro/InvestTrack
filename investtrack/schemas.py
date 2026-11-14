@@ -6,7 +6,7 @@ never has to parse money into a float.
 
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import (
     AfterValidator,
@@ -220,7 +220,7 @@ class FixedIncomeOut(BaseModel):
     redeemed_on: date | None
     partial_redemptions: list[PartialRedemptionOut]
     principal: Money = Field(description="Amount invested still held, after partial redemptions")
-    status: str = Field(description="ACTIVE, REDEEMED or MATURED")
+    status: Literal["ACTIVE", "REDEEMED", "MATURED"]
     as_of: date | None = Field(description="Day of the values below; None until the CDI is known")
     estimated: bool = Field(
         description="IPCA+ only: uses the last published IPCA for months not out yet"
@@ -269,7 +269,9 @@ class ErrorOut(BaseModel):
 
 class ImportRowOut(BaseModel):
     line: int = Field(description="Row in the spreadsheet")
-    status: str = Field(description="NEW, DUPLICATE, REJECTED, or IMPORTED after importing")
+    status: Literal["NEW", "DUPLICATE", "REJECTED", "IMPORTED"] = Field(
+        description="IMPORTED replaces NEW once the import is saved"
+    )
     date: date
     op_type: OpType
     ticker: str

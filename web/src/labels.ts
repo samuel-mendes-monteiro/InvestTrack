@@ -27,3 +27,9 @@ export const STOCK_EVENT_TYPES: Record<Schemas['StockEventType'], string> = {
   REVERSE_SPLIT: 'Grupamento',
   BONUS: 'Bonificação',
 }
+
+export const FI_PRODUCTS: Schemas['Product'][] = ['CDB', 'LCI', 'LCA']
+
+export const FI_INDEXERS: Record<Schemas['Indexer'], string> = { CDI: '% do CDI', PRE: 'Prefixado', IPCA: 'IPCA+' }
+
+export const FI_STATUS: Record<Schemas['FixedIncomeOut']['status'], string> = { ACTIVE: 'Aplicado', REDEEMED: 'Resgatado', MATURED: 'Vencido' }

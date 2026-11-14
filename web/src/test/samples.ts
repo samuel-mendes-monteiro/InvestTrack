@@ -87,3 +87,28 @@ export function stockEvent(overrides: Partial<Schemas['StockEventOut']> = {}): S
     ...overrides,
   }
 }
+
+export function fixedIncome(overrides: Partial<Schemas['FixedIncomeOut']> = {}): Schemas['FixedIncomeOut'] {
+  return {
+    id: 1,
+    name: 'CDB Banco X',
+    product: 'CDB',
+    indexer: 'CDI',
+    rate: '110.00',
+    start: '2026-01-05',
+    maturity: '2027-01-05',
+    amount: '5000.00',
+    principal: '5000.00',
+    gross: '5400.10',
+    iof: '0.00',
+    ir: '80.02',
+    net: '5320.08',
+    gross_return: '8.00',
+    as_of: '2026-11-13',
+    estimated: false,
+    redeemed_on: null,
+    status: 'ACTIVE',
+    partial_redemptions: [],
+    ...overrides,
+  }
+}

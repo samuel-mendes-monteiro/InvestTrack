@@ -379,7 +379,11 @@
             "type": "string"
           },
           "status": {
-            "description": "ACTIVE, REDEEMED or MATURED",
+            "enum": [
+              "ACTIVE",
+              "REDEEMED",
+              "MATURED"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -506,7 +510,13 @@
             "type": "string"
           },
           "status": {
-            "description": "NEW, DUPLICATE, REJECTED, or IMPORTED after importing",
+            "description": "IMPORTED replaces NEW once the import is saved",
+            "enum": [
+              "NEW",
+              "DUPLICATE",
+              "REJECTED",
+              "IMPORTED"
+            ],
             "title": "Status",
             "type": "string"
           },

@@ -5,6 +5,7 @@ import { api, call } from './api/client'
 import { keys } from './api/queries'
 import { setToken, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
+import { FixedIncomePage } from './fixed-income/FixedIncomePage'
 import { IncomePage } from './income/IncomePage'
 import { OperationForm } from './operations/OperationForm'
 import { OperationsPage } from './operations/OperationsPage'
@@ -21,6 +22,7 @@ const PAGES = [
   { path: '/', label: 'Carteira', element: <PortfolioPage /> },
   { path: '/operacoes', label: 'Operações', element: <OperationsPage /> },
   { path: '/proventos', label: 'Proventos', element: <IncomePage /> },
+  { path: '/renda-fixa', label: 'Renda fixa', element: <FixedIncomePage /> },
 ]
 
 /** Everything behind the login. */

@@ -565,9 +565,9 @@ export interface components {
             start: string;
             /**
              * Status
-             * @description ACTIVE, REDEEMED or MATURED
+             * @enum {string}
              */
-            status: string;
+            status: "ACTIVE" | "REDEEMED" | "MATURED";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -615,9 +615,10 @@ export interface components {
             quantity: string;
             /**
              * Status
-             * @description NEW, DUPLICATE, REJECTED, or IMPORTED after importing
+             * @description IMPORTED replaces NEW once the import is saved
+             * @enum {string}
              */
-            status: string;
+            status: "NEW" | "DUPLICATE" | "REJECTED" | "IMPORTED";
             /** Ticker */
             ticker: string;
         };

@@ -422,3 +422,41 @@ fieldset.segmented label {
 .actions .push-left {
   margin-right: auto;
 }
+
+h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.inline-form label {
+  flex: 1 1 160px;
+}
+
+p.small {
+  font-size: 0.85rem;
+}
+
+button.danger {
+  border-color: var(--negative);
+  color: var(--negative);
+}
+
+.modal {
+  width: min(620px, 100%);
+}
+
+button.link {
+  padding: 0;
+  border: none;
+  font-weight: inherit;
+  color: var(--accent);
+  text-align: left;
+}

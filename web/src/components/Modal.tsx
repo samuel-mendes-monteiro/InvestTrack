@@ -4,17 +4,25 @@ import { useEffect, useId, useRef, type ReactNode } from 'react'
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const titleId = useId()
   const box = useRef<HTMLDivElement>(null)
+  // Parents pass a new arrow function on every render. Reading it through a ref
+  // lets the effect below run once, on open: if it depended on onClose, any
+  // re-render of the parent (a refetch, say) would yank focus back to the
+  // first field while the user is typing in another.
+  const close = useRef(onClose)
+  useEffect(() => {
+    close.current = onClose
+  })
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     box.current?.querySelector<HTMLElement>('input, select, button')?.focus()
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
     document.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('keydown', onKey)
       previous?.focus() // back to the button that opened it, for keyboard users
     }
-  }, [onClose])
+  }, [])
 
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
