@@ -18,7 +18,7 @@ People who invest through more than one broker don't get a single view of their 
 InvestTrack is a web app where you record your buy and sell trades and get back:
 
 - your current position in each asset
-- the average cost (*preço médio*), including fees
+- the average cost (*preço médio*), including fees, adjusted automatically for stock splits, reverse splits and bonus shares
 - realized and unrealized profit/loss, in R$ and in %
 - dividends, JCP and FII distributions, **computed automatically** from what B3 publishes and what you owned on each record date, including income still to be paid
 - how your portfolio is split across assets
@@ -44,7 +44,7 @@ flowchart LR
     API --> Prices["<b>Price cache</b><br/>15 min, fallback"]
     Prices -- "HTTPS + token" --> Brapi["brapi.dev"]
     Prices --> DB
-    API --> Events["<b>Income events</b><br/>daily sync, kept forever"]
+    API --> Events["<b>Corporate events</b><br/>daily sync, kept forever"]
     Events -- "HTTPS" --> B3["B3 website"]
     Events --> DB
 ```
@@ -53,7 +53,7 @@ flowchart LR
 |---|---|
 | [`investtrack/portfolio.py`](investtrack/portfolio.py) | Average cost, realized and unrealized profit. Pure functions: no database, no HTTP |
 | [`investtrack/income.py`](investtrack/income.py) | Income (dividends, JCP, FII distributions): computed from events and trades, monthly totals. Also pure |
-| [`investtrack/income_events.py`](investtrack/income_events.py) | Stores B3 income events, synced once a day, with fallback to what is stored |
+| [`investtrack/events.py`](investtrack/events.py) | Stores B3 events (income, splits, bonus shares), synced once a day, with fallback to what is stored |
 | [`investtrack/b3.py`](investtrack/b3.py) | The only module that knows B3's URLs and JSON format |
 | [`investtrack/repository.py`](investtrack/repository.py) | Saves and reads trades; validates every change through the calculation core |
 | [`investtrack/api.py`](investtrack/api.py) | Thin HTTP layer: converts JSON, calls the repository, maps errors to status codes |
@@ -76,6 +76,17 @@ realized_profit += sold_qty × (sell_price − avg) − fees
 ```
 
 Trades are processed **in date order** (not in the order they were entered), and a sale can never leave a negative quantity. Selling a whole position resets the average cost, so a later purchase starts fresh.
+
+**Splits, reverse splits and bonus shares** (*desdobramentos*, *grupamentos*, *bonificações*) are applied at the end of their record date, after that day's trades:
+
+```
+new_qty = floor(qty × multiplier)        e.g. 1:2 split → × 2, 10:1 reverse split → × 0.1
+new_avg = total_cost / (qty × multiplier)
+```
+
+- Splits and reverse splits **don't change the total cost**: 100 shares at R$ 30 become 200 at R$ 15.
+- Fractions are dropped, because B3 sells them in an auction and pays the holder in cash. Their share of the cost leaves with them, so the average price is the same as without rounding. The auction cash is not tracked.
+- Bonus shares enter with **zero cost** for now: the tax rules give them the cost attributed by the company (*custo atribuído*), which B3 doesn't publish in the data used here.
 
 **Income (*proventos*)** is computed, never typed, just like positions:
 
@@ -102,7 +113,8 @@ net   = gross − tax withheld   (15% on JCP; dividends and FII distributions: n
 - **The API token stays on the server**, in a `.env` file that is never committed, and is sent in a header rather than in the URL (URLs end up in logs).
 - **Income events come from B3's website, not from brapi.** brapi only offers them on a paid plan. B3 has no official API either: `b3.py` uses the JSON endpoints the website itself calls. They are undocumented and may change, so everything about them is isolated in that one module, and events already stored keep working if it breaks.
 - **Events are matched by ISIN, not by name.** One issuer lists events for all its securities (common and preferred shares, subscription receipts). The ISIN encodes the kind (`BRBBASACNOR3` is BBAS3, a common share), and also tells funds apart from companies, so an FII amortization (capital returned) is never counted as income.
-- **Events are kept forever, synced once a day.** B3 shows only about 12 months of history. Each sync replaces the window B3 returned (so corrections apply) and keeps everything older. Events are announced days ahead, so a daily sync loses nothing and makes one request per ticker per day.
+- **Positions depend on market data, but are still never stored.** Every calculation (validating a sale, deleting a trade, the portfolio, income) uses the same `calculate_position` with the stock events, so after a 1:2 split, selling the doubled amount is accepted everywhere. Other corporate actions (spin-offs, capital reductions) need more than a factor and are not handled.
+- **Events are kept forever, synced once a day.** B3 shows only about 12 months of income history (stock events go back decades). Each sync replaces the window B3 returned (so corrections apply) and keeps everything older. Events are announced days ahead, so a daily sync loses nothing and makes one request per ticker per day.
 - **Only market data is stored, never what you received.** Events (value per share) are stored like quotes; your income is computed from them and your trades.
 - **New tables, no migration.** Income has no quantity or price, so it isn't stored as a kind of trade. Adding tables is the safest schema change: existing databases get them on startup and no existing column changes.
 - **The frontend never imports the backend.** It only talks to the API over HTTP, so the Streamlit UI can later be replaced by React without touching the backend.
@@ -113,7 +125,7 @@ net   = gross − tax withheld   (15% on JCP; dividends and FII distributions: n
 pytest --cov
 ```
 
-197 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
+219 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
 
 The calculation tests include the worked example used to design the rules:
 
@@ -171,6 +183,7 @@ streamlit run frontend/app.py
 | `GET` | `/income/monthly` | Net income received per month and type, optionally for one `?year=` |
 | `POST` | `/income` | Record income manually (422 if the ticker wasn't bought by then) |
 | `DELETE` | `/income/{id}` | Delete a manual income |
+| `GET` | `/stock-events` | Splits, reverse splits and bonus shares that changed one of your positions |
 | `GET` | `/portfolio` | Positions, live prices, income received and portfolio totals |
 | `GET` | `/health` | Health check |
 
@@ -192,7 +205,8 @@ streamlit run frontend/app.py
 - [x] Streamlit UI
 - [x] CI with GitHub Actions
 - [x] **v0.2:** dividends, JCP and REIT (FII) income
-- [ ] Adjust income for stock splits and bonus shares (*desdobramentos*, *bonificações*)
+- [x] Stock splits, reverse splits and bonus shares
+- [ ] Attributed cost of bonus shares (*custo atribuído*)
 - [ ] **v0.3:** historical performance with time-weighted return (TWR), compared with CDI and Ibovespa
 - [ ] **v0.4:** fixed income (CDB, LCI, LCA)
 - [ ] **v0.5:** login and multiple users

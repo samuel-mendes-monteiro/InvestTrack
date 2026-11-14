@@ -1,4 +1,4 @@
-"""HTTP client for B3's public listing pages (income events).
+"""HTTP client for B3's public listing pages (income and stock events).
 
 B3 publishes every dividend, JCP and FII distribution on its website. There
 is no official API: these are the JSON endpoints the website itself calls,
@@ -23,7 +23,8 @@ from decimal import Decimal, InvalidOperation
 
 import requests
 
-from investtrack.income import IncomeEvent, IncomeType
+from investtrack.income import IncomeEvent, IncomeType, TickerEvents
+from investtrack.portfolio import ONE, StockEvent, StockEventType
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +42,14 @@ COMPANY_LABELS = {
     "RENDIMENTO": IncomeType.DIVIDEND,
 }
 FUND_LABELS = {"RENDIMENTO": IncomeType.DISTRIBUTION}
+
+# Other stock events (spin-offs, capital reductions, redemptions...) need
+# more than a factor to be handled correctly, so they are left out.
+STOCK_LABELS = {
+    "DESDOBRAMENTO": StockEventType.SPLIT,
+    "GRUPAMENTO": StockEventType.REVERSE_SPLIT,
+    "BONIFICACAO": StockEventType.BONUS,
+}
 
 # The ISIN of a B3 security encodes its kind right after the issuer code:
 # BRBBASACNOR3 = BBAS + ACNOR (common share), BRPETRACNPR6 = PETR + ACNPR (preferred).
@@ -113,6 +122,37 @@ def parse_events(ticker: str, payload: dict) -> list[IncomeEvent]:
     return events
 
 
+def multiplier(event_type: StockEventType, factor: Decimal) -> Decimal:
+    """B3's factor means different things per event type.
+
+    Split and bonus: percentage of new shares ("100" = +100%, so 1 becomes 2).
+    Reverse split: the multiplier itself ("0,1" = 10 shares become 1).
+    """
+    if event_type is StockEventType.REVERSE_SPLIT:
+        return factor
+    return ONE + factor / 100
+
+
+def parse_stock_events(ticker: str, payload: dict) -> list[StockEvent]:
+    events = []
+    for item in payload.get("stockDividends") or []:
+        if not isin_matches(item.get("isinCode", ""), ticker):
+            continue
+        event_type = STOCK_LABELS.get(item.get("label", "").strip())
+        if event_type is None:
+            log.info("Ignoring %s stock event of %s", item.get("label"), ticker)
+            continue
+        try:
+            record_date = _br_date(item["lastDatePrior"])
+            factor = _br_decimal(item["factor"])
+        except (KeyError, ValueError, TypeError) as e:
+            raise EventsUnavailableError(f"{ticker}: unexpected stock event format: {e}") from e
+        if record_date is None or factor <= 0:
+            continue
+        events.append(StockEvent(ticker, event_type, record_date, multiplier(event_type, factor)))
+    return events
+
+
 class B3Client:
     def __init__(
         self,
@@ -124,8 +164,8 @@ class B3Client:
         self.timeout = timeout
         self.session = session or requests.Session()
 
-    def fetch_events(self, ticker: str, is_fund: bool) -> list[IncomeEvent]:
-        """All income events B3 lists for this ticker (about the last 12 months).
+    def fetch_events(self, ticker: str, is_fund: bool) -> TickerEvents:
+        """Income events (about the last 12 months) and stock events (full history).
 
         is_fund says which endpoint to try first. If the issuer isn't found
         there, the other one is tried: an FII registered as a stock by
@@ -135,9 +175,11 @@ class B3Client:
         for fund in (is_fund, not is_fund):
             payload = self._get_issuer(ticker, fund)
             if payload is not None:
-                return parse_events(ticker, payload)
+                return TickerEvents(
+                    parse_events(ticker, payload), parse_stock_events(ticker, payload)
+                )
         log.info("%s not found at B3", ticker)
-        return []
+        return TickerEvents([], [])
 
     def _get_issuer(self, ticker: str, fund: bool) -> dict | None:
         """The issuer's JSON, or None if B3 doesn't know it."""

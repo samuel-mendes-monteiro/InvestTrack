@@ -23,13 +23,13 @@ from investtrack import repository
 from investtrack.b3 import B3Client
 from investtrack.brapi import BrapiClient
 from investtrack.db import create_db_engine, init_db
+from investtrack.events import EventSource, StoredEvents
 from investtrack.income import (
     Income,
     IncomeWithoutPositionError,
     monthly_income,
     net_income_by_ticker,
 )
-from investtrack.income_events import IncomeEventSource, StoredIncomeEvents
 from investtrack.models import OperationRecord
 from investtrack.portfolio import InsufficientPositionError, Operation, value_position
 from investtrack.prices import CachedPriceProvider, PriceProvider
@@ -43,6 +43,7 @@ from investtrack.schemas import (
     PortfolioOut,
     PortfolioTotals,
     PositionOut,
+    StockEventOut,
 )
 
 # --- dependencies ------------------------------------------------------------
@@ -58,13 +59,13 @@ def get_price_provider(request: Request) -> PriceProvider:
     return request.app.state.price_provider
 
 
-def get_income_events(request: Request) -> IncomeEventSource:
-    return request.app.state.income_events
+def get_events(request: Request) -> EventSource:
+    return request.app.state.events
 
 
 SessionDep = Annotated[Session, Depends(get_session)]
 PricesDep = Annotated[PriceProvider, Depends(get_price_provider)]
-EventsDep = Annotated[IncomeEventSource, Depends(get_income_events)]
+EventsDep = Annotated[EventSource, Depends(get_events)]
 
 
 def api_error(status_code: int, code: str, error: Exception) -> HTTPException:
@@ -119,7 +120,7 @@ def income_to_out(income_id: int | None, income: Income) -> IncomeOut:
     )
 
 
-def all_incomes(session: Session, events: IncomeEventSource) -> list[tuple[int | None, Income]]:
+def all_incomes(session: Session, events: EventSource) -> list[tuple[int | None, Income]]:
     """Manual entries (with their id) and computed income, by payment date."""
     manual = [(r.id, repository.income_to_domain(r)) for r in repository.list_incomes(session)]
     computed = [(None, i) for i in repository.computed_incomes(session, events)]
@@ -149,9 +150,9 @@ def default_price_provider(engine: Engine) -> PriceProvider:
 def create_app(
     engine: Engine | None = None,
     price_provider: PriceProvider | None = None,
-    income_events: IncomeEventSource | None = None,
+    events: EventSource | None = None,
 ) -> FastAPI:
-    """Build the app. Tests pass their own engine, prices and income events."""
+    """Build the app. Tests pass their own engine, prices and corporate events."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -159,9 +160,7 @@ def create_app(
         logging.basicConfig(level=logging.INFO)
         app.state.engine = engine or create_db_engine()
         app.state.price_provider = price_provider or default_price_provider(app.state.engine)
-        app.state.income_events = income_events or StoredIncomeEvents(
-            app.state.engine, B3Client().fetch_events
-        )
+        app.state.events = events or StoredEvents(app.state.engine, B3Client().fetch_events)
         init_db(app.state.engine)
         yield
         app.state.engine.dispose()
@@ -169,7 +168,7 @@ def create_app(
     app = FastAPI(
         title="InvestTrack API",
         description="Portfolio tracker for the Brazilian stock market (B3).",
-        version="0.2.0",
+        version="0.2.1",
         lifespan=lifespan,
     )
 
@@ -186,7 +185,9 @@ def create_app(
             422: {"model": ErrorOut, "description": "Invalid data, or selling more than owned"}
         },
     )
-    def create_operation(payload: OperationCreate, session: SessionDep) -> OperationOut:
+    def create_operation(
+        payload: OperationCreate, session: SessionDep, events: EventsDep
+    ) -> OperationOut:
         try:
             op = Operation(
                 ticker=payload.ticker,
@@ -196,7 +197,7 @@ def create_app(
                 price=payload.price,
                 fees=payload.fees,
             )
-            record = repository.add_operation(session, op, payload.asset_type)
+            record = repository.add_operation(session, op, payload.asset_type, events)
         except InsufficientPositionError as e:
             raise api_error(422, "INSUFFICIENT_POSITION", e) from e
         except ValueError as e:  # domain validation, e.g. a blank ticker
@@ -222,15 +223,30 @@ def create_app(
             },
         },
     )
-    def delete_operation(operation_id: int, session: SessionDep) -> None:
+    def delete_operation(operation_id: int, session: SessionDep, events: EventsDep) -> None:
         try:
-            repository.delete_operation(session, operation_id)
+            repository.delete_operation(session, operation_id, events)
         except repository.OperationNotFoundError as e:
             raise api_error(404, "OPERATION_NOT_FOUND", e) from e
         except InsufficientPositionError as e:
             raise api_error(409, "DELETE_BREAKS_LATER_SALE", e) from e
         except IncomeWithoutPositionError as e:
             raise api_error(409, "DELETE_ORPHANS_INCOME", e) from e
+
+    @app.get("/stock-events", tags=["operations"])
+    def list_stock_events(session: SessionDep, events: EventsDep) -> list[StockEventOut]:
+        """Splits, reverse splits and bonus shares that changed one of your positions."""
+        return [
+            StockEventOut(
+                ticker=a.event.ticker,
+                event_type=a.event.event_type,
+                record_date=a.event.record_date,
+                multiplier=a.event.multiplier,
+                quantity_before=a.quantity_before,
+                quantity_after=a.quantity_after,
+            )
+            for a in repository.get_applied_stock_events(session, events)
+        ]
 
     @app.post(
         "/income",
@@ -304,7 +320,7 @@ def create_app(
         income = net_income_by_ticker(received(incomes))
         pending = sum((i.net for _, i in incomes if i.date > date.today()), Decimal("0"))
 
-        for pos in repository.get_portfolio(session).values():
+        for pos in repository.get_portfolio(session, events).values():
             total_realized += pos.realized_profit
             invested = pos.quantity * pos.avg_price
             total_invested += invested

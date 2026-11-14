@@ -26,6 +26,11 @@ OP_TYPES = {"Compra": "BUY", "Venda": "SELL"}
 OP_LABELS = {v: k for k, v in OP_TYPES.items()}
 INCOME_TYPES = {"Dividendo": "DIVIDEND", "JCP": "JCP", "Rendimento (FII)": "DISTRIBUTION"}
 INCOME_LABELS = {v: k for k, v in INCOME_TYPES.items()}
+STOCK_EVENT_LABELS = {
+    "SPLIT": "Desdobramento",
+    "REVERSE_SPLIT": "Grupamento",
+    "BONUS": "Bonificação",
+}
 MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 
 st.set_page_config(page_title="InvestTrack", page_icon="📈", layout="wide")
@@ -316,6 +321,36 @@ elif view == "Operações":
             hide_index=True,
             width="stretch",
         )
+
+        applied = api.stock_events()
+        if applied:
+            st.subheader("Desdobramentos e bonificações")
+            st.caption(
+                "Aplicados automaticamente a partir dos eventos da B3, no fim da data com. "
+                "Frações de ação são vendidas pela B3 em leilão e não aparecem aqui."
+            )
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Data com": date.fromisoformat(e["record_date"]).strftime("%d/%m/%Y"),
+                            "Evento": STOCK_EVENT_LABELS[e["event_type"]],
+                            "Ticker": e["ticker"],
+                            "Antes": quantity(e["quantity_before"]),
+                            "Depois": quantity(e["quantity_after"]),
+                        }
+                        for e in applied
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+            if any(e["event_type"] == "BONUS" for e in applied):
+                st.warning(
+                    "Bonificação: as ações novas entraram com custo zero, porque a B3 não "
+                    "publica o custo atribuído. Para o IR, confira o valor informado pela "
+                    "empresa: ele aumenta o preço médio."
+                )
 
         with st.expander("Apagar uma operação"):
             options = {operation_label(o): o["id"] for o in shown}

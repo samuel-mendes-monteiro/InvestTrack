@@ -21,12 +21,13 @@ Design rules:
 """
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
-from investtrack.portfolio import ZERO, Operation, OpType, calculate_position
+from investtrack.portfolio import ZERO, Operation, OpType, StockEvent, calculate_position
 
 # Income tax withheld on JCP for individuals (Lei 9.249/95, art. 9).
 JCP_TAX_RATE = Decimal("0.15")
@@ -111,20 +112,38 @@ class IncomeEvent:
             raise TypeError("rate must be a Decimal, never a float")
 
 
-def quantity_on(operations: list[Operation], day: date) -> Decimal:
+@dataclass(frozen=True)
+class TickerEvents:
+    """Everything B3 publishes about one ticker that affects a holder."""
+
+    income: list[IncomeEvent]
+    stock: list[StockEvent]
+
+
+def quantity_on(
+    operations: list[Operation], day: date, stock_events: Iterable[StockEvent] = ()
+) -> Decimal:
     """Shares held at the end of `day`: trades on that day count.
+
+    Stock events count only if their record date is before `day`. When a
+    split and a dividend share the same record date, the dividend is
+    announced per share as they were before the split.
 
     Reuses calculate_position instead of a second implementation of the
     trade rules, so the two can never disagree.
     """
     until_then = [op for op in operations if op.date <= day]
-    return calculate_position(until_then).quantity if until_then else ZERO
+    if not until_then:
+        return ZERO
+    events = [e for e in stock_events if e.record_date < day]
+    return calculate_position(until_then, events).quantity
 
 
 def incomes_from_events(
     operations: list[Operation],
     events: list[IncomeEvent],
     jcp_tax_rate: Decimal = JCP_TAX_RATE,
+    stock_events: Iterable[StockEvent] = (),
 ) -> list[Income]:
     """What each event paid you, given your trades.
 
@@ -136,11 +155,12 @@ def incomes_from_events(
     for op in operations:
         by_ticker[op.ticker].append(op)
 
+    stock_events = list(stock_events)
     incomes = []
     for event in events:
         if event.payment_date is None or event.rate <= 0:
             continue
-        quantity = quantity_on(by_ticker[event.ticker], event.record_date)
+        quantity = quantity_on(by_ticker[event.ticker], event.record_date, stock_events)
         if quantity == 0:
             continue
         amount = quantity * event.rate

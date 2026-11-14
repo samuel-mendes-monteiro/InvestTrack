@@ -7,7 +7,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from investtrack.db import create_db_engine, init_db
-from investtrack.income import Income, IncomeEvent, IncomeType, IncomeWithoutPositionError
+from investtrack.income import (
+    Income,
+    IncomeEvent,
+    IncomeType,
+    IncomeWithoutPositionError,
+    TickerEvents,
+)
 from investtrack.models import Asset, AssetType, OperationRecord
 from investtrack.portfolio import InsufficientPositionError, Operation, OpType
 from investtrack.repository import (
@@ -234,9 +240,10 @@ def test_computed_incomes_use_each_asset_type(session):
         def events_for(self, ticker, asset_type):
             asked.append((ticker, asset_type))
             rate = Decimal("1.10") if ticker == "HGLG11" else Decimal("0.50")
-            return [
-                IncomeEvent(ticker, IncomeType.DIVIDEND, date(2026, 1, 2), date(2026, 1, 9), rate)
-            ]
+            income = IncomeEvent(
+                ticker, IncomeType.DIVIDEND, date(2026, 1, 2), date(2026, 1, 9), rate
+            )
+            return TickerEvents([income], [])
 
     incomes = computed_incomes(session, Events())
     assert sorted(asked) == [("HGLG11", AssetType.FII), ("PETR4", AssetType.STOCK)]

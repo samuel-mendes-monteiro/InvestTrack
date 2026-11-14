@@ -6,8 +6,9 @@ from fastapi.testclient import TestClient
 
 from investtrack.api import create_app
 from investtrack.db import create_db_engine
+from investtrack.events import StaticEvents
 from investtrack.income import IncomeEvent, IncomeType
-from investtrack.income_events import StaticIncomeEvents
+from investtrack.portfolio import StockEvent, StockEventType
 from investtrack.prices import StaticPriceProvider
 
 PRICES = StaticPriceProvider({"PETR4": Decimal("38"), "HGLG11": Decimal("160")})
@@ -19,7 +20,7 @@ def client():
     app = create_app(
         engine=create_db_engine("sqlite://"),
         price_provider=PRICES,
-        income_events=StaticIncomeEvents(),
+        events=StaticEvents(),
     )
     with TestClient(app) as c:  # "with" runs the startup/shutdown (lifespan)
         yield c
@@ -321,7 +322,7 @@ def events_client():
         app = create_app(
             engine=create_db_engine("sqlite://"),
             price_provider=PRICES,
-            income_events=StaticIncomeEvents(events),
+            events=StaticEvents(income=events),
         )
         c = TestClient(app)
         c.__enter__()
@@ -402,3 +403,57 @@ def test_income_filters_apply_to_computed_income(events_client):
         "2026-02-15"
     ]
     assert client.get("/income", params={"ticker": "vale3"}).json() == []
+
+
+# --- stock events ------------------------------------------------------------
+
+
+def split_event(day, multiplier="2", ticker="PETR4"):
+    return StockEvent(ticker, StockEventType.SPLIT, date.fromisoformat(day), Decimal(multiplier))
+
+
+@pytest.fixture
+def split_client():
+    app = create_app(
+        engine=create_db_engine("sqlite://"),
+        price_provider=PRICES,
+        events=StaticEvents(stock=[split_event("2026-02-01")]),
+    )
+    with TestClient(app) as c:
+        yield c
+
+
+def test_portfolio_applies_splits(split_client):
+    split_client.post("/operations", json=op(qty="100", price="30", day="2026-01-05"))
+    petr = split_client.get("/portfolio").json()["positions"][0]
+    assert petr["quantity"] == "200"
+    assert petr["avg_price"] == "15.00"
+    assert petr["invested"] == "3000.00"
+
+
+def test_selling_split_shares_is_accepted(split_client):
+    split_client.post("/operations", json=op(qty="100", day="2026-01-05"))
+    r = split_client.post("/operations", json=op("SELL", qty="200", day="2026-02-02"))
+    assert r.status_code == 201
+
+
+def test_deleting_is_checked_with_splits(split_client):
+    first = split_client.post("/operations", json=op(qty="100", day="2026-01-05")).json()
+    split_client.post("/operations", json=op(qty="100", day="2026-01-06"))
+    split_client.post("/operations", json=op("SELL", qty="300", day="2026-02-02"))
+    r = split_client.delete(f"/operations/{first['id']}")
+    assert r.status_code == 409  # 100 x 2 = 200 left, but 300 were sold
+
+
+def test_list_applied_stock_events(split_client):
+    split_client.post("/operations", json=op(qty="100", day="2026-01-05"))
+    assert split_client.get("/stock-events").json() == [
+        {
+            "ticker": "PETR4",
+            "event_type": "SPLIT",
+            "record_date": "2026-02-01",
+            "multiplier": "2",
+            "quantity_before": "100",
+            "quantity_after": "200",
+        }
+    ]

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from investtrack.db import Base, SafeDecimal
 from investtrack.income import IncomeType
-from investtrack.portfolio import OpType
+from investtrack.portfolio import OpType, StockEventType
 
 
 class AssetType(StrEnum):
@@ -120,10 +120,36 @@ class IncomeEventRecord(Base):
     __table_args__ = (Index("ix_income_events_ticker_record_date", "ticker", "record_date"),)
 
 
-class IncomeEventSync(Base):
-    """When each ticker's events were last fetched from B3."""
+class StockEventRecord(Base):
+    """Splits, reverse splits and bonus shares published by B3.
 
-    __tablename__ = "income_event_sync"
+    Market data like income_events: keyed by ticker, kept for good. Positions
+    are never stored; they are computed from operations and these events.
+    """
+
+    __tablename__ = "stock_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(12))
+    event_type: Mapped[StockEventType] = mapped_column(
+        Enum(StockEventType, native_enum=False, length=20)
+    )
+    record_date: Mapped[date] = mapped_column(Date)
+    multiplier: Mapped[Decimal] = mapped_column(SafeDecimal)
+    unit_cost: Mapped[Decimal] = mapped_column(SafeDecimal, default=Decimal("0"))
+
+    __table_args__ = (Index("ix_stock_events_ticker_record_date", "ticker", "record_date"),)
+
+
+class EventSync(Base):
+    """When each ticker's events (income and stock) were last fetched from B3.
+
+    Replaces the v0.2 table income_event_sync, which only covered income:
+    a new table makes every ticker sync again, so stock events are fetched
+    right away. The old table is no longer used.
+    """
+
+    __tablename__ = "event_sync"
 
     ticker: Mapped[str] = mapped_column(String(12), primary_key=True)
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

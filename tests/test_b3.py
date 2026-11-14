@@ -18,8 +18,10 @@ from investtrack.b3 import (
     SourceDownError,
     isin_matches,
     parse_events,
+    parse_stock_events,
 )
-from investtrack.income import IncomeType
+from investtrack.income import IncomeType, TickerEvents
+from investtrack.portfolio import StockEventType
 
 
 def item(isin, label, rate, record="01/09/2026", payment="11/09/2026"):
@@ -129,26 +131,26 @@ def decoded_params(session, call=0) -> dict:
 
 def test_company_request():
     client, session = client_returning(fake_response(200, json.dumps([BBAS])))
-    assert len(client.fetch_events("bbas3", is_fund=False)) == 2
+    assert len(client.fetch_events("bbas3", is_fund=False).income) == 2
     assert decoded_params(session) == {"issuingCompany": "BBAS", "language": "pt-br"}
     assert session.get.call_args.kwargs["timeout"] == 10.0
 
 
 def test_fund_request():
     client, session = client_returning(fake_response(200, json.dumps(HGLG)))
-    assert len(client.fetch_events("HGLG11", is_fund=True)) == 1
+    assert len(client.fetch_events("HGLG11", is_fund=True).income) == 1
     assert decoded_params(session)["identifierFund"] == "HGLG"
 
 
 def test_falls_back_to_the_other_endpoint_when_issuer_is_unknown():
     client, session = client_returning(fake_response(200, ""), fake_response(200, json.dumps(HGLG)))
-    assert len(client.fetch_events("HGLG11", is_fund=False)) == 1  # registered as a stock
+    assert len(client.fetch_events("HGLG11", is_fund=False).income) == 1  # registered as a stock
     assert "identifierFund" in decoded_params(session, call=1)
 
 
 def test_unknown_everywhere_returns_no_events():
     client, _ = client_returning(fake_response(200, ""), fake_response(200, ""))
-    assert client.fetch_events("XPTO3", is_fund=False) == []
+    assert client.fetch_events("XPTO3", is_fund=False) == TickerEvents([], [])
 
 
 @pytest.mark.parametrize("error", [requests.ConnectionError("refused"), requests.Timeout("slow")])
@@ -176,3 +178,46 @@ def test_unexpected_body_is_an_error(body):
     client, _ = client_returning(fake_response(200, body))
     with pytest.raises(EventsUnavailableError):
         client.fetch_events("BBAS3", is_fund=False)
+
+
+# --- stock events ------------------------------------------------------------
+
+
+def stock_item(isin, label, factor, record="15/04/2024"):
+    return {"isinCode": isin, "label": label, "factor": factor, "lastDatePrior": record}
+
+
+def test_parse_stock_events():
+    payload = {
+        "stockDividends": [
+            stock_item("BRBBASACNOR3", "DESDOBRAMENTO", "100,00000000000"),
+            stock_item("BRBBASACNOR3", "GRUPAMENTO", "0,00100000000", "23/01/2004"),
+            stock_item("BRBBASACNOR3", "BONIFICACAO", "10,00000000000", "18/04/2022"),
+            stock_item("BRBBASACNOR3", "DESDOBRAMENTO", "4.900,00000000000", "08/06/2009"),
+            stock_item("BRBBASACNOR3", "CIS RED CAP", "100,00000000000"),  # not handled
+            stock_item("BRBBASA04OR8", "DESDOBRAMENTO", "100,00000000000"),  # other security
+        ]
+    }
+    events = parse_stock_events("BBAS3", payload)
+    assert [(e.event_type, e.multiplier) for e in events] == [
+        (StockEventType.SPLIT, Decimal("2")),  # +100%: 1 becomes 2
+        (StockEventType.REVERSE_SPLIT, Decimal("0.001")),  # 1000 become 1
+        (StockEventType.BONUS, Decimal("1.1")),  # +10%
+        (StockEventType.SPLIT, Decimal("50")),  # +4900%: 1 becomes 50
+    ]
+    assert events[0].record_date == date(2024, 4, 15)
+
+
+def test_stock_events_come_in_the_same_request():
+    payload = dict(BBAS, stockDividends=[stock_item("BRBBASACNOR3", "DESDOBRAMENTO", "100,0")])
+    client, session = client_returning(fake_response(200, json.dumps([payload])))
+    result = client.fetch_events("BBAS3", is_fund=False)
+    assert len(result.income) == 2
+    assert len(result.stock) == 1
+    assert session.get.call_count == 1
+
+
+def test_unexpected_stock_event_format_is_an_error():
+    payload = {"stockDividends": [stock_item("BRBBASACNOR3", "DESDOBRAMENTO", "x")]}
+    with pytest.raises(EventsUnavailableError):
+        parse_stock_events("BBAS3", payload)

@@ -190,3 +190,9 @@ def test_monthly_income_sends_year():
 )
 def test_per_share(value, expected):
     assert per_share(value) == expected
+
+
+def test_stock_events_request():
+    client, session = client_with(fake_response(200, "[]"))
+    assert client.stock_events() == []
+    session.request.assert_called_once_with("GET", "http://api.test/stock-events", timeout=15.0)

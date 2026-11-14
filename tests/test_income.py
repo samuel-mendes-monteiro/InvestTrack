@@ -16,7 +16,7 @@ from investtrack.income import (
     net_income_by_ticker,
     quantity_on,
 )
-from investtrack.portfolio import Operation, OpType
+from investtrack.portfolio import Operation, OpType, StockEvent, StockEventType
 
 
 def income(month, day, amount, tax="0", kind=IncomeType.DIVIDEND, ticker="ITSA4"):
@@ -183,3 +183,15 @@ def test_event_without_payment_date_is_left_out():
 def test_event_rejects_float_rate():
     with pytest.raises(TypeError):
         IncomeEvent("ITSA4", IncomeType.DIVIDEND, date(2026, 2, 5), None, 0.1)
+
+
+def test_income_after_a_split_uses_the_new_quantity():
+    split = StockEvent("ITSA4", StockEventType.SPLIT, date(2026, 1, 20), Decimal("2"))
+    [i] = incomes_from_events([buy(1, 10)], [event(2, 5, "1")], stock_events=[split])
+    assert i.quantity == 200
+
+
+def test_income_on_the_split_record_date_uses_the_old_quantity():
+    split = StockEvent("ITSA4", StockEventType.SPLIT, date(2026, 2, 5), Decimal("2"))
+    [i] = incomes_from_events([buy(1, 10)], [event(2, 5, "1")], stock_events=[split])
+    assert i.quantity == 100  # announced per share as they were before the split

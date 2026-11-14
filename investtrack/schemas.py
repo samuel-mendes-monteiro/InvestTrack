@@ -19,7 +19,7 @@ from pydantic import (
 
 from investtrack.income import IncomeSource, IncomeType
 from investtrack.models import AssetType
-from investtrack.portfolio import OpType
+from investtrack.portfolio import OpType, StockEventType
 
 
 def _round2(value: Decimal) -> str:
@@ -95,6 +95,15 @@ class MonthlyIncomeOut(BaseModel):
     distribution: Money
     tax: Money
     net: Money
+
+
+class StockEventOut(BaseModel):
+    ticker: str
+    event_type: StockEventType
+    record_date: date = Field(description="Applied at the end of this day")
+    multiplier: Decimal = Field(description="Shares after = shares before x multiplier")
+    quantity_before: Decimal
+    quantity_after: Decimal
 
 
 class OperationOut(BaseModel):

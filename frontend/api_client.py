@@ -40,6 +40,9 @@ class ApiClient:
     def delete_operation(self, operation_id: int) -> None:
         self._request("DELETE", f"/operations/{operation_id}")
 
+    def stock_events(self) -> list[dict]:
+        return self._request("GET", "/stock-events")
+
     def incomes(self) -> list[dict]:
         return self._request("GET", "/income")
 
