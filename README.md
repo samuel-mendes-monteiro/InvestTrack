@@ -70,6 +70,7 @@ Trades are processed **in date order** (not in the order they were entered), and
 - **Calculations are isolated** in a pure module with no database or HTTP access. It takes a list of trades and returns positions, which makes it easy to test.
 - **The API token stays on the server.** The frontend never calls brapi directly.
 - **Decimals are stored as text on SQLite.** SQLite has no real decimal type, so SQLAlchemy would store `Numeric` as a float. A custom column type keeps exact values on SQLite and uses native `NUMERIC` on PostgreSQL.
+- **Money is sent as JSON strings** (`"35.10"`), not numbers, so API clients never parse it into a float. Values are rounded to 2 decimals only in the response.
 - **Quotes are cached** for about 15 minutes per ticker. If the API is down, the last known price is used.
 
 ## Roadmap
@@ -77,7 +78,7 @@ Trades are processed **in date order** (not in the order they were entered), and
 - [x] **Stage 0:** project setup
 - [x] **Stage 1:** pure calculation logic + tests
 - [x] **Stage 2:** database (SQLAlchemy)
-- [ ] **Stage 3:** REST API (FastAPI)
+- [x] **Stage 3:** REST API (FastAPI)
 - [ ] **Stage 4:** live quotes (brapi) with caching
 - [ ] **Stage 5:** Streamlit UI
 - [ ] **Stage 6:** CI with GitHub Actions + polish
@@ -105,6 +106,22 @@ Create a local SQLite database with sample trades and print the portfolio:
 ```bash
 python -m investtrack.demo
 ```
+
+Start the API and open the interactive docs at http://localhost:8000/docs:
+
+```bash
+uvicorn investtrack.api:app --reload
+```
+
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/operations` | Record a buy or sell (refuses selling more than owned) |
+| `GET` | `/operations` | List operations, optionally filtered by `?ticker=` |
+| `DELETE` | `/operations/{id}` | Delete an operation (refuses if a later sale would break) |
+| `GET` | `/portfolio` | Positions, current prices and portfolio totals |
+| `GET` | `/health` | Health check |
+
+Prices are fixed placeholders for now; live quotes from brapi.dev come in stage 4.
 
 The database URL can be changed with the `DATABASE_URL` environment variable (default: `sqlite:///investtrack.db`).
 

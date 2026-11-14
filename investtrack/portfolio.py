@@ -111,6 +111,24 @@ def calculate_position(operations: list[Operation]) -> Position:
     return Position(ticker, quantity, avg_price, realized_profit)
 
 
+@dataclass(frozen=True)
+class Valuation:
+    """Unrealized result of a position at a given market price."""
+
+    invested: Decimal
+    current_value: Decimal
+    result: Decimal
+    result_pct: Decimal | None  # None when nothing is invested (closed position)
+
+
+def value_position(position: Position, price: Decimal) -> Valuation:
+    invested = position.quantity * position.avg_price
+    current_value = position.quantity * price
+    result = current_value - invested
+    result_pct = result / invested * 100 if invested else None
+    return Valuation(invested, current_value, result, result_pct)
+
+
 def calculate_portfolio(operations: list[Operation]) -> dict[str, Position]:
     """Group operations by ticker and compute each position.
 

@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy import Engine, Numeric, String, create_engine, event
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.types import TypeDecorator
 
 DEFAULT_DATABASE_URL = "sqlite:///investtrack.db"
@@ -48,7 +49,17 @@ class SafeDecimal(TypeDecorator):
 def create_db_engine(url: str | None = None) -> Engine:
     """Create the engine from the given URL or the DATABASE_URL env variable."""
     url = url or os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
-    engine = create_engine(url)
+    kwargs = {}
+    if url.startswith("sqlite"):
+        # FastAPI runs sync endpoints in a thread pool, so a connection may be
+        # used by a different thread than the one that opened it. That is safe
+        # here because each request uses its own session.
+        kwargs["connect_args"] = {"check_same_thread": False}
+        if url in ("sqlite://", "sqlite:///:memory:"):
+            # An in-memory database lives inside one connection. StaticPool
+            # shares that single connection, so every thread sees the same data.
+            kwargs["poolclass"] = StaticPool
+    engine = create_engine(url, **kwargs)
 
     if engine.dialect.name == "sqlite":
         # SQLite ignores foreign keys unless this is turned on per connection.

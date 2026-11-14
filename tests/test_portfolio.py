@@ -9,6 +9,7 @@ from investtrack.portfolio import (
     OpType,
     calculate_portfolio,
     calculate_position,
+    value_position,
 )
 
 
@@ -136,3 +137,25 @@ def test_invalid_values_are_rejected(qty, price, fees):
 def test_float_is_rejected():
     with pytest.raises(TypeError):
         Operation("PETR4", OpType.BUY, date(2026, 1, 1), Decimal("1"), 30.0)
+
+
+# --- valuation ---------------------------------------------------------------
+
+def test_valuation_example_from_project_doc():
+    pos = calculate_position([
+        buy(1, "100", "30"),
+        buy(2, "100", "40"),
+        sell(3, "50", "50"),
+    ])
+    v = value_position(pos, Decimal("38"))
+    assert v.invested == Decimal("5250")
+    assert v.current_value == Decimal("5700")
+    assert v.result == Decimal("450")
+    assert v.result_pct.quantize(Decimal("0.01")) == Decimal("8.57")
+
+
+def test_valuation_of_closed_position():
+    pos = calculate_position([buy(1, "100", "30"), sell(2, "100", "35")])
+    v = value_position(pos, Decimal("40"))
+    assert v.result == 0
+    assert v.result_pct is None
