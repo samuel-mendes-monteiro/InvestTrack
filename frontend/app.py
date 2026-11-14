@@ -166,6 +166,64 @@ def on_create() -> None:
         s[key] = ""
 
 
+def on_update(operation_id: int) -> None:
+    # The fields' keys end with the id: choosing another operation creates new
+    # widgets, prefilled with its values, instead of keeping the old ones' text.
+    s = st.session_state
+
+    def field(name: str):
+        return s[f"e_{name}_{operation_id}"]
+
+    try:
+        if not field("ticker").strip():
+            raise ValueError("informe o ticker")
+        payload = {
+            "ticker": field("ticker").strip().upper(),
+            "op_type": OP_TYPES[field("op_type")],
+            "date": field("date").isoformat(),
+            "quantity": str(field_decimal("Quantidade", field("quantity"))),
+            "price": str(field_decimal("Preço", field("price"))),
+            "fees": str(field_decimal("Taxas", field("fees") or "0")),
+            "asset_type": ASSET_TYPES[field("asset_type")],
+        }
+        api.update_operation(operation_id, payload)
+    except (ValueError, ApiError) as e:
+        flash("error", f"Operação não alterada: {e}")
+        return
+    flash("success", f"Operação #{operation_id} alterada.")
+
+
+def edit_operation_form(o: dict) -> None:
+    key = o["id"]
+    with st.form(f"edit_operation_{key}"):
+        st.radio(
+            "Tipo",
+            list(OP_TYPES),
+            index=list(OP_TYPES.values()).index(o["op_type"]),
+            key=f"e_op_type_{key}",
+            horizontal=True,
+        )
+        c1, c2 = st.columns(2)
+        c1.text_input("Ticker", value=o["ticker"], key=f"e_ticker_{key}")
+        c2.selectbox(
+            "Classe do ativo",
+            list(ASSET_TYPES),
+            key=f"e_asset_type_{key}",
+            help="Usada só se o ticker mudar para um que ainda não existe.",
+        )
+        c1.date_input(
+            "Data",
+            value=date.fromisoformat(o["date"]),
+            max_value=date.today(),
+            format="DD/MM/YYYY",
+            key=f"e_date_{key}",
+        )
+        c2.text_input("Quantidade", value=quantity(o["quantity"]), key=f"e_quantity_{key}")
+        c1.text_input("Preço unitário (R$)", value=quantity(o["price"]), key=f"e_price_{key}")
+        c2.text_input("Taxas (R$)", value=quantity(o["fees"]), key=f"e_fees_{key}")
+        st.form_submit_button("Salvar alterações", type="primary", on_click=on_update, args=(key,))
+
+
 def on_delete(operation_id: int) -> None:
     try:
         api.delete_operation(operation_id)
@@ -695,6 +753,22 @@ elif view == "Operações":
                         on_click=on_delete_bonus_cost,
                         args=(bonus,),
                     )
+
+        with st.expander("Editar uma operação"):
+            st.caption(
+                "Útil para incluir as taxas das operações importadas da B3, que vêm "
+                "sem taxas. A API recusa a alteração se ela deixar uma venda sem ações."
+            )
+            editable = {operation_label(o): o for o in shown}
+            label = st.selectbox(
+                "Operação",
+                list(editable),
+                index=None,
+                placeholder="Escolha a operação a editar",
+                key="e_choice",
+            )
+            if label is not None:
+                edit_operation_form(editable[label])
 
         with st.expander("Apagar uma operação"):
             options = {operation_label(o): o["id"] for o in shown}

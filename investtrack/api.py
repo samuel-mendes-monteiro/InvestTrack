@@ -404,6 +404,50 @@ def create_app(
         except IncomeWithoutPositionError as e:
             raise api_error(409, "DELETE_ORPHANS_INCOME", e) from e
 
+    @app.put(
+        "/operations/{operation_id}",
+        tags=["operations"],
+        responses={
+            404: {"model": ErrorOut, "description": "Operation not found"},
+            409: {
+                "model": ErrorOut,
+                "description": "Would leave a sale, or income, without shares",
+            },
+            422: {"model": ErrorOut, "description": "Invalid data"},
+        },
+    )
+    def update_operation(
+        operation_id: int,
+        payload: OperationCreate,
+        session: SessionDep,
+        user: UserDep,
+        events: EventsDep,
+    ) -> OperationOut:
+        """Replace every field of an operation, e.g. to add the fees of an
+        imported trade. Same body as creating one; the id stays the same."""
+        try:
+            op = Operation(
+                ticker=payload.ticker,
+                op_type=payload.op_type,
+                date=payload.date,
+                quantity=payload.quantity,
+                price=payload.price,
+                fees=payload.fees,
+            )
+            record = repository.update_operation(
+                session, user.id, operation_id, op, payload.asset_type, events
+            )
+        except repository.OperationNotFoundError as e:
+            raise api_error(404, "OPERATION_NOT_FOUND", e) from e
+        # 409, not 422: the data is valid, it conflicts with the other operations.
+        except InsufficientPositionError as e:
+            raise api_error(409, "EDIT_BREAKS_HISTORY", e) from e
+        except IncomeWithoutPositionError as e:
+            raise api_error(409, "EDIT_ORPHANS_INCOME", e) from e
+        except ValueError as e:
+            raise api_error(422, "INVALID_OPERATION", e) from e
+        return to_out(record)
+
     @app.get("/stock-events", tags=["operations"])
     def list_stock_events(
         session: SessionDep, user: UserDep, events: EventsDep

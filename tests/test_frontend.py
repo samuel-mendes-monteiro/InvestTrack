@@ -112,6 +112,16 @@ def test_delete_conflict_is_translated():
     assert "venda posterior de PETR4" in api_error_for(409, body)
 
 
+def test_edit_conflict_is_translated():
+    body = (
+        '{"detail": {"code": "EDIT_BREAKS_HISTORY", "message": "...",'
+        ' "ticker": "PETR4", "available": "50", "requested": "80"}}'
+    )
+    assert api_error_for(409, body) == (
+        "Com essa alteração, uma venda de PETR4 ficaria sem ações: haveria 50 e a venda é de 80."
+    )
+
+
 def test_unknown_code_falls_back_to_english_message():
     body = '{"detail": {"code": "SOMETHING_NEW", "message": "Something new happened"}}'
     assert api_error_for(422, body) == "Something new happened"

@@ -37,6 +37,7 @@ from investtrack.repository import (
     list_incomes,
     list_operations,
     set_bonus_cost,
+    update_operation,
 )
 
 USER = 1  # the first account of a fresh database
@@ -154,6 +155,65 @@ def test_delete_that_breaks_a_later_sale_is_refused(session):
 def test_delete_unknown_operation(session):
     with pytest.raises(OperationNotFoundError):
         delete_operation(session, USER, 42)
+
+
+def test_update_operation_keeps_id_and_changes_fields(session):
+    record = add_operation(session, USER, buy(1, "100", "30"))
+    updated = update_operation(session, USER, record.id, buy(2, "100", "30", fees="4.90"))
+    session.expire_all()
+
+    [saved] = list_operations(session, USER)
+    assert saved.id == updated.id == record.id
+    assert (saved.date, saved.fees) == (date(2026, 1, 2), Decimal("4.90"))
+
+
+def test_update_that_breaks_a_later_sale_is_refused_and_not_saved(session):
+    first_buy = add_operation(session, USER, buy(1, "100", "30"))
+    add_operation(session, USER, sell(2, "80", "35"))
+
+    with pytest.raises(InsufficientPositionError):
+        update_operation(session, USER, first_buy.id, buy(1, "50", "30"))
+    with pytest.raises(InsufficientPositionError):  # moved after the sale
+        update_operation(session, USER, first_buy.id, buy(3, "100", "30"))
+    session.expire_all()
+    assert list_operations(session, USER)[0].quantity == Decimal("100")
+
+
+def test_update_to_another_ticker_checks_the_old_one(session):
+    first_buy = add_operation(session, USER, buy(1, "100", "30"))
+    add_operation(session, USER, sell(2, "80", "35"))
+    with pytest.raises(InsufficientPositionError):
+        update_operation(session, USER, first_buy.id, buy(1, "100", "30", ticker="VALE3"))
+
+    lone = add_operation(session, USER, buy(1, "10", "20", ticker="ITSA4"))
+    update_operation(session, USER, lone.id, buy(1, "10", "20", ticker="ITSA3"))
+    assert set(get_portfolio(session, USER)) == {"PETR4", "ITSA3"}
+
+
+def test_update_keeps_same_day_order(session):
+    # Same day: buy 100 (id 1), sell 100 (id 2). Editing the buy must still
+    # check it before the sale, as the database orders by (date, id).
+    first_buy = add_operation(session, USER, buy(1, "100", "30"))
+    add_operation(session, USER, sell(1, "100", "35"))
+    update_operation(session, USER, first_buy.id, buy(1, "100", "30", fees="5"))
+    assert get_portfolio(session, USER)["PETR4"].quantity == 0
+
+
+def test_update_that_orphans_income_is_refused(session):
+    first_buy = add_operation(session, USER, buy(1, "100", "30"))
+    add_income(session, USER, dividend(5, "10"))
+    with pytest.raises(IncomeWithoutPositionError):
+        update_operation(session, USER, first_buy.id, buy(10, "100", "30"))
+
+
+def test_update_unknown_or_other_users_operation(session):
+    session.add(User(email="bia@example.com", password_hash="-", created_at=datetime.now(UTC)))
+    session.commit()
+    record = add_operation(session, USER, buy(1, "100", "30"))
+    with pytest.raises(OperationNotFoundError):
+        update_operation(session, USER, 42, buy(1, "100", "30"))
+    with pytest.raises(OperationNotFoundError):
+        update_operation(session, 2, record.id, buy(1, "1", "30"))
 
 
 def test_portfolio_from_database(session):

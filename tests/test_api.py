@@ -179,6 +179,41 @@ def test_delete_that_breaks_a_later_sale_is_refused(client):
     assert len(client.get("/operations").json()) == 2
 
 
+# --- PUT /operations/{id} ----------------------------------------------------
+
+
+def test_update_operation(client):
+    created = client.post("/operations", json=op()).json()
+    r = client.put(f"/operations/{created['id']}", json=op(fees="4.90"))
+    assert r.status_code == 200
+    assert r.json() == created | {"fees": "4.90"}
+    assert client.get("/portfolio").json()["positions"][0]["avg_price"] == "30.05"
+
+
+def test_update_unknown_operation(client):
+    r = client.put("/operations/999", json=op())
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "OPERATION_NOT_FOUND"
+
+
+def test_update_that_breaks_a_later_sale_is_refused(client):
+    first_buy = client.post("/operations", json=op(qty="100")).json()
+    client.post("/operations", json=op("SELL", qty="80", day="2026-01-02"))
+    r = client.put(f"/operations/{first_buy['id']}", json=op(qty="50"))
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert (detail["code"], detail["available"], detail["requested"]) == (
+        "EDIT_BREAKS_HISTORY",
+        "50",
+        "80",
+    )
+
+
+def test_update_with_invalid_data(client):
+    created = client.post("/operations", json=op()).json()
+    assert client.put(f"/operations/{created['id']}", json=op(qty="0")).status_code == 422
+
+
 # --- GET /portfolio ----------------------------------------------------------
 
 
@@ -777,6 +812,7 @@ def test_other_users_rows_look_missing(shared_engine):
             log_in(bia, "bia@example.com")
             r = bia.delete(f"/operations/{operation['id']}")
             assert r.status_code == 404  # not 403: ids reveal nothing
+            assert bia.put(f"/operations/{operation['id']}", json=op()).status_code == 404
             assert bia.delete(f"/fixed-income/{investment['id']}").status_code == 404
             url = f"/fixed-income/{investment['id']}/redemption"
             assert bia.put(url, json={"redeemed_on": None}).status_code == 404

@@ -85,6 +85,9 @@ class ApiClient:
     def create_operation(self, payload: dict) -> dict:
         return self._request("POST", "/operations", json=payload)
 
+    def update_operation(self, operation_id: int, payload: dict) -> dict:
+        return self._request("PUT", f"/operations/{operation_id}", json=payload)
+
     def delete_operation(self, operation_id: int) -> None:
         self._request("DELETE", f"/operations/{operation_id}")
 
@@ -178,6 +181,16 @@ def domain_error(d: dict) -> str:
             return (
                 f"Apagar essa operação deixaria uma venda posterior de {d['ticker']} "
                 "sem ações suficientes. Apague a venda primeiro."
+            )
+        case "EDIT_BREAKS_HISTORY":
+            return (
+                f"Com essa alteração, uma venda de {d['ticker']} ficaria sem ações: "
+                f"haveria {_qty(d['available'])} e a venda é de {_qty(d['requested'])}."
+            )
+        case "EDIT_ORPHANS_INCOME":
+            return (
+                f"Com essa alteração, proventos de {d['ticker']} ficariam antes "
+                "da primeira compra. Confira a data."
             )
         case "OPERATION_NOT_FOUND":
             return "Operação não encontrada. Talvez ela já tenha sido apagada."

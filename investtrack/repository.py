@@ -183,10 +183,67 @@ def delete_operation(
     record = _owned(session, OperationRecord, operation_id, user_id)
     if record is None:
         raise OperationNotFoundError(operation_id)
+    _check_without(session, user_id, record, events)
+    session.delete(record)
+    session.commit()
 
+
+def update_operation(
+    session: Session,
+    user_id: int,
+    operation_id: int,
+    op: Operation,
+    asset_type: AssetType = AssetType.STOCK,
+    events: EventSource = NO_EVENTS,
+) -> OperationRecord:
+    """Replace an operation, keeping its id, if the history stays valid.
+
+    An edit is a delete plus an add, so it is checked like both: the new
+    values must not sell more than owned at any point, and, if the ticker
+    changed, the old ticker must stay valid without it (later sales and
+    income included). Raises the same errors; nothing changes if it fails.
+    """
+    record = _owned(session, OperationRecord, operation_id, user_id)
+    if record is None:
+        raise OperationNotFoundError(operation_id)
+
+    old_ticker = record.asset.ticker
+    if op.ticker != old_ticker:
+        _check_without(session, user_id, record, events)
+
+    # Checked in the order the database will return them, (date, id): the
+    # edited operation keeps its id, so it keeps its place among same-day ones.
+    others = [
+        (r.date, r.id, to_domain(r))
+        for r in list_operations(session, user_id, op.ticker)
+        if r.id != operation_id
+    ]
+    timeline = sorted(others + [(op.date, operation_id, op)], key=lambda t: (t[0], t[1]))
+    operations = [o for _, _, o in timeline]
+    stock = _stock_events(session, user_id, events, op.ticker, asset_type)
+    calculate_position(operations, stock)  # raises if the edited list is invalid
+    # Moving the first buy later may leave earlier income without shares.
+    check_incomes(
+        operations, [income_to_domain(r) for r in list_incomes(session, user_id, op.ticker)]
+    )
+
+    record.asset = get_or_create_asset(session, op.ticker, asset_type)
+    record.op_type = op.op_type
+    record.date = op.date
+    record.quantity = op.quantity
+    record.price = op.price
+    record.fees = op.fees
+    session.commit()
+    return record
+
+
+def _check_without(
+    session: Session, user_id: int, record: OperationRecord, events: EventSource
+) -> None:
+    """Raise if removing this operation would break its ticker's history."""
     ticker = record.asset.ticker
     remaining = [
-        to_domain(r) for r in list_operations(session, user_id, ticker) if r.id != operation_id
+        to_domain(r) for r in list_operations(session, user_id, ticker) if r.id != record.id
     ]
     if remaining:
         stock = _stock_events(session, user_id, events, ticker, record.asset.asset_type)
@@ -194,9 +251,6 @@ def delete_operation(
     # Deleting the first buy may leave income paid before any remaining buy.
     incomes = [income_to_domain(r) for r in list_incomes(session, user_id, ticker)]
     check_incomes(remaining, incomes)
-
-    session.delete(record)
-    session.commit()
 
 
 def operations_and_stock_events(
