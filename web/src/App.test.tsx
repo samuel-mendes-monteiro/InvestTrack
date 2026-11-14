@@ -24,5 +24,5 @@ test('shows the API as connected when /api/health answers', async () => {
 test('explains what to check when the API is down', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 502 })))
   renderApp()
-  expect(await screen.findByText(/porta 8000/)).toBeInTheDocument()
+  expect(await screen.findByText(/Ela está rodando/)).toBeInTheDocument()
 })

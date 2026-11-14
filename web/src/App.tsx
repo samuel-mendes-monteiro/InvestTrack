@@ -1,16 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { api } from './api/client'
+import { api, call } from './api/client'
 
-// Placeholder screen for v1.0a step 1: proves the page reaches the API through
-// the dev proxy. Login and the real screens replace it in the next steps.
+// Placeholder screen until the login screen (step 3): proves the page reaches
+// the API through the dev proxy.
 export default function App() {
   const health = useQuery({
     queryKey: ['health'],
-    queryFn: async () => {
-      const { data, error } = await api.GET('/health')
-      if (error || !data) throw new Error('API unreachable')
-      return data
-    },
+    queryFn: () => call(api.GET('/health')),
     retry: false,
   })
 
@@ -20,7 +16,7 @@ export default function App() {
       <p role="status">
         {health.isPending && 'Conectando à API…'}
         {health.isSuccess && 'API conectada.'}
-        {health.isError && 'Não foi possível conectar à API. O uvicorn está rodando na porta 8000?'}
+        {health.isError && health.error.message}
       </p>
     </main>
   )

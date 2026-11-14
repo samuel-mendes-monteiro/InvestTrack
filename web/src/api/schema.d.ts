@@ -450,6 +450,11 @@ export interface components {
              * @example INSUFFICIENT_POSITION
              */
             code: string;
+            /**
+             * Date
+             * @description REDEMPTION_TOO_LARGE: the day asked for
+             */
+            date?: string | null;
             /** First Buy */
             first_buy?: string | null;
             /** Income Date */
@@ -461,6 +466,11 @@ export interface components {
             message: string;
             /** Requested */
             requested?: string | null;
+            /**
+             * Retry After
+             * @description TOO_MANY_ATTEMPTS: seconds to wait
+             */
+            retry_after?: number | null;
             /** Ticker */
             ticker?: string | null;
         };

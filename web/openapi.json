@@ -79,6 +79,19 @@
             "title": "Code",
             "type": "string"
           },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REDEMPTION_TOO_LARGE: the day asked for",
+            "title": "Date"
+          },
           "first_buy": {
             "anyOf": [
               {
@@ -118,6 +131,18 @@
               }
             ],
             "title": "Requested"
+          },
+          "retry_after": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "TOO_MANY_ATTEMPTS: seconds to wait",
+            "title": "Retry After"
           },
           "ticker": {
             "anyOf": [

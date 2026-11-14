@@ -22,6 +22,10 @@ from investtrack.income import IncomeSource, IncomeType
 from investtrack.models import AssetType
 from investtrack.portfolio import OpType, StockEventType
 
+# For classes with a field named "date": inside them that name means the
+# field's default, not the type, once annotations are evaluated.
+Day = date
+
 
 def _round2(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
@@ -253,8 +257,10 @@ class ErrorDetail(BaseModel):
     ticker: str | None = None
     available: Decimal | None = None
     requested: Decimal | None = None
-    income_date: date | None = None
-    first_buy: date | None = None
+    income_date: Day | None = None
+    first_buy: Day | None = None
+    date: Day | None = Field(None, description="REDEMPTION_TOO_LARGE: the day asked for")
+    retry_after: int | None = Field(None, description="TOO_MANY_ATTEMPTS: seconds to wait")
 
 
 class ErrorOut(BaseModel):
