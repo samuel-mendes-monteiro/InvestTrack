@@ -98,6 +98,21 @@ class MonthlyIncomeOut(BaseModel):
     net: Money
 
 
+class Credentials(BaseModel):
+    email: str = Field(max_length=254, examples=["ana@example.com"])
+    password: str = Field(max_length=256)  # the length rules live in auth.py
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+
+
+class SessionOut(BaseModel):
+    token: str = Field(description='Send as "Authorization: Bearer <token>"')
+    expires_at: datetime
+
+
 class StockEventOut(BaseModel):
     ticker: str
     event_type: StockEventType

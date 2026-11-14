@@ -2,6 +2,7 @@
 
 import os
 from decimal import Decimal
+from pathlib import Path
 
 from sqlalchemy import Engine, Numeric, String, create_engine, event
 from sqlalchemy.orm import DeclarativeBase
@@ -70,8 +71,22 @@ def create_db_engine(url: str | None = None) -> Engine:
     return engine
 
 
-def init_db(engine: Engine) -> None:
-    """Create all tables that do not exist yet."""
-    from investtrack import models  # noqa: F401  (registers the tables)
+MIGRATIONS = Path(__file__).parent / "migrations"
 
-    Base.metadata.create_all(engine)
+
+def init_db(engine: Engine) -> None:
+    """Bring the database to the latest schema by applying pending migrations.
+
+    Until v0.4 this was create_all, which only creates missing tables. v0.5
+    adds columns to tables that already have data, which needs migrations.
+    The baseline migration skips tables that exist, so databases from before
+    and brand new ones take the same path.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    config = Config()
+    config.set_main_option("script_location", str(MIGRATIONS))
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection  # migrate this very engine
+        command.upgrade(config, "head")

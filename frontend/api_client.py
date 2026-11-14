@@ -13,13 +13,37 @@ class ApiError(Exception):
     """A user-facing error message from the API (or from not reaching it)."""
 
 
+class NotLoggedInError(ApiError):
+    """The session is missing or expired: the user must log in again."""
+
+
 class ApiClient:
     def __init__(
-        self, base_url: str, timeout: float = 15.0, session: requests.Session | None = None
+        self,
+        base_url: str,
+        timeout: float = 15.0,
+        session: requests.Session | None = None,
+        token: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = session or requests.Session()
+        if token:
+            self.session.headers["Authorization"] = f"Bearer {token}"
+
+    def register(self, email: str, password: str) -> dict:
+        return self._request("POST", "/auth/register", json={"email": email, "password": password})
+
+    def login(self, email: str, password: str) -> str:
+        """The session token."""
+        body = self._request("POST", "/auth/login", json={"email": email, "password": password})
+        return body["token"]
+
+    def logout(self) -> None:
+        self._request("POST", "/auth/logout")
+
+    def me(self) -> dict:
+        return self._request("GET", "/auth/me")
 
     def is_up(self) -> bool:
         try:
@@ -85,6 +109,8 @@ class ApiClient:
         except requests.RequestException as e:
             raise ApiError(f"Não foi possível falar com a API em {self.base_url}.") from e
 
+        if r.status_code == 401 and path not in ("/auth/login", "/auth/register"):
+            raise NotLoggedInError(error_message(r))
         if r.status_code >= 400:
             raise ApiError(error_message(r))
         if r.status_code == 204:
@@ -159,6 +185,16 @@ def _domain_error(d: dict) -> str:
                 f"Apagar essa compra deixaria proventos de {d['ticker']} recebidos "
                 "antes de qualquer compra. Apague os proventos primeiro."
             )
+        case "INVALID_CREDENTIALS":
+            return "E-mail ou senha incorretos."
+        case "EMAIL_TAKEN":
+            return "Já existe uma conta com esse e-mail."
+        case "WEAK_PASSWORD":
+            return "A senha precisa ter pelo menos 8 caracteres."
+        case "INVALID_EMAIL":
+            return "E-mail inválido."
+        case "NOT_AUTHENTICATED":
+            return "Sua sessão expirou. Entre de novo."
         case "INVALID_FIXED_INCOME":
             return FIXED_INCOME_MESSAGES.get(d.get("message"), d.get("message", ""))
         case "FIXED_INCOME_NOT_FOUND":

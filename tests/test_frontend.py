@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from api_client import ApiClient, ApiError
+from api_client import ApiClient, ApiError, NotLoggedInError
 from formatting import brl, parse_decimal, pct, per_share, quantity
 
 # --- formatting --------------------------------------------------------------
@@ -234,3 +234,35 @@ def test_fixed_income_errors_are_translated():
         ' "message": "maturity must be after the start date"}}'
     )
     assert api_error_for(422, body) == "O vencimento deve ser depois da aplicação."
+
+
+def test_token_is_sent_in_the_header():
+    session = requests.Session()
+    ApiClient("http://api.test", session=session, token="abc")
+    assert session.headers["Authorization"] == "Bearer abc"
+
+
+def test_login_returns_the_token():
+    client, session = client_with(fake_response(200, '{"token": "abc", "expires_at": "x"}'))
+    assert client.login("ana@x.com", "long enough") == "abc"
+    session.request.assert_called_once_with(
+        "POST",
+        "http://api.test/auth/login",
+        timeout=15.0,
+        json={"email": "ana@x.com", "password": "long enough"},
+    )
+
+
+def test_expired_session_is_its_own_error():
+    body = '{"detail": {"code": "NOT_AUTHENTICATED", "message": "..."}}'
+    client, _ = client_with(fake_response(401, body))
+    with pytest.raises(NotLoggedInError, match="sessão expirou"):
+        client.portfolio()
+
+
+def test_wrong_password_is_not_a_session_error():
+    body = '{"detail": {"code": "INVALID_CREDENTIALS", "message": "..."}}'
+    client, _ = client_with(fake_response(401, body))
+    with pytest.raises(ApiError, match="E-mail ou senha incorretos") as exc:
+        client.login("ana@x.com", "wrong one")
+    assert not isinstance(exc.value, NotLoggedInError)

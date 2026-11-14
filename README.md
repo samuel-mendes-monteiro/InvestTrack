@@ -15,7 +15,7 @@ People who invest through more than one broker don't get a single view of their 
 
 ## The solution
 
-InvestTrack is a web app where you record your buy and sell trades and get back:
+InvestTrack is a web app where each person, with their own account, records their buy and sell trades and gets back:
 
 - your current position in each asset
 - the average cost (*preço médio*), including fees, adjusted automatically for stock splits, reverse splits and bonus shares
@@ -65,8 +65,10 @@ flowchart LR
 | [`investtrack/fixed_income.py`](investtrack/fixed_income.py) | CDB, LCI and LCA: value from the CDI or a fixed rate, IOF and income tax. Pure |
 | [`investtrack/market_data.py`](investtrack/market_data.py) | Stores daily prices, Ibovespa and CDI; downloads only what is missing, in the background |
 | [`investtrack/history.py`](investtrack/history.py) | Clients and parsers for COTAHIST files, the Ibovespa table and the CDI series |
-| [`investtrack/repository.py`](investtrack/repository.py) | Saves and reads trades; validates every change through the calculation core |
-| [`investtrack/api.py`](investtrack/api.py) | Thin HTTP layer: converts JSON, calls the repository, maps errors to status codes |
+| [`investtrack/repository.py`](investtrack/repository.py) | Saves and reads each user's data; validates every change through the calculation core |
+| [`investtrack/api.py`](investtrack/api.py) | Thin HTTP layer: converts JSON, checks the session, calls the repository, maps errors to status codes |
+| [`investtrack/auth.py`](investtrack/auth.py) | Accounts, Argon2id password hashes and session tokens |
+| [`investtrack/migrations/`](investtrack/migrations) | Alembic migrations, applied automatically when the API starts |
 | [`investtrack/prices.py`](investtrack/prices.py) | Quote cache with fallback to the last known price |
 | [`investtrack/brapi.py`](investtrack/brapi.py) | The only module that knows brapi's URL and JSON format |
 | [`frontend/`](frontend) | Streamlit UI, a pure HTTP client of the API |
@@ -156,6 +158,11 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 - **One injectable clock.** Market data uses the same clock for "today" and for load timestamps. Mixing a fake "today" with the real clock made tests pass only on the day they were written.
 - **The CDI history must reach back to the oldest investment.** Being downloaded today is not enough: registering a CDB from last year makes the CDI be fetched again from that date.
 - **New tables, no migration.** Income has no quantity or price, so it isn't stored as a kind of trade. Adding tables is the safest schema change: existing databases get them on startup and no existing column changes.
+- **Passwords are hashed with Argon2id**, OWASP's first recommendation: a random salt per password and a deliberately slow, memory-hungry function, so a stolen database is expensive to brute force. Lengths follow NIST (at least 8, long passphrases allowed, with an upper bound because hashing has a cost). Hashes made with weaker parameters are upgraded at the next login, the only moment the password is available.
+- **Sessions are opaque tokens, not JWTs.** The client gets 256 random bits; the database keeps only their SHA-256, so reading the database doesn't give anyone a session. Logging out deletes the row, which a JWT can't do without a list of revoked tokens.
+- **Login errors don't reveal accounts.** A wrong email and a wrong password give the same message, and take the same time: an unknown email is still checked against a dummy hash.
+- **Every row of user data has an owner, and every query filters by it.** Another user's row by id answers 404, exactly like a missing one, so ids reveal nothing. Market data (quotes, CDI, B3 events) is shared. A test walks through every route of the API and fails if one answers without a session, so a future endpoint can't forget it.
+- **The first real migration.** Until v0.4, new tables were enough (`create_all`). Adding an owner to tables that already have data needs migrations, so v0.5 brings Alembic. The baseline migration only creates missing tables, so databases from before and new ones follow the same path; the first account created adopts the data from before accounts existed. `bonus_costs` changes its primary key, which Alembic can't detect, so it is rebuilt by hand.
 - **The frontend never imports the backend.** It only talks to the API over HTTP, so the Streamlit UI can later be replaced by React without touching the backend.
 
 ## Testing
@@ -164,7 +171,7 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 pytest --cov
 ```
 
-315 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
+370 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. Every push runs the linter, the formatter check and the tests on Python 3.12 and 3.14 with [GitHub Actions](.github/workflows/ci.yml).
 
 The calculation tests include the worked example used to design the rules:
 
@@ -193,11 +200,13 @@ Quotes come from brapi.dev. Copy the example settings and add your free brapi to
 cp .env.example .env
 ```
 
-Optionally, create a database with sample trades and income:
+Optionally, create a database with a demo account, sample trades and income (it prints the email and password to log in with):
 
 ```bash
 python -m investtrack.demo
 ```
+
+Or create your own account on the login screen. Migrations run when the API starts; to create a new one after changing the models, use `alembic revision --autogenerate -m "..."`.
 
 Start the API (interactive docs at http://localhost:8000/docs):
 
@@ -213,8 +222,14 @@ streamlit run frontend/app.py
 
 ### API
 
+Every route except `/health`, `/auth/register` and `/auth/login` needs `Authorization: Bearer <token>`, with the token returned by `/auth/login`.
+
 | Method | Route | Description |
 |---|---|---|
+| `POST` | `/auth/register` | Create an account (409 if the email is taken) |
+| `POST` | `/auth/login` | Get a session token, valid for 30 days |
+| `POST` | `/auth/logout` | End the session |
+| `GET` | `/auth/me` | The logged-in user |
 | `POST` | `/operations` | Record a buy or sell (422 if selling more than owned) |
 | `GET` | `/operations` | List operations, optionally filtered by `?ticker=` |
 | `DELETE` | `/operations/{id}` | Delete an operation (409 if a later sale or an income depends on it) |
@@ -256,7 +271,7 @@ streamlit run frontend/app.py
 - [x] **v0.3:** historical performance with time-weighted return (TWR), compared with CDI and Ibovespa
 - [x] **v0.4:** fixed income (CDB, LCI, LCA)
 - [ ] Partial redemptions and IPCA+ fixed income
-- [ ] **v0.5:** login and multiple users
+- [x] **v0.5:** login and multiple users
 - [ ] **v0.6:** import B3 trade statements
 - [ ] **v1.0:** React frontend and cloud deployment
 

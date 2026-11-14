@@ -1,7 +1,10 @@
+import re
+from contextlib import ExitStack, contextmanager
 from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from investtrack.api import create_app
@@ -15,16 +18,52 @@ from investtrack.prices import StaticPriceProvider
 PRICES = StaticPriceProvider({"PETR4": Decimal("38"), "HGLG11": Decimal("160")})
 
 
+# Real Argon2id with the cheapest parameters: logging in stays fast.
+FAST_HASHER = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+
+
+def log_in(c: TestClient, email: str = "ana@example.com", password: str = "long enough"):
+    c.post("/auth/register", json={"email": email, "password": password})
+    token = c.post("/auth/login", json={"email": email, "password": password}).json()["token"]
+    c.headers["Authorization"] = f"Bearer {token}"
+    return c
+
+
+@contextmanager
+def api_client(**overrides):
+    """An API with test doubles everywhere (no network), already logged in.
+
+    In-memory database, fixed prices, no corporate events, fixed history.
+    Each test overrides only what it is about.
+    """
+    own_engine = "engine" not in overrides
+    settings = {
+        "engine": create_db_engine("sqlite://") if own_engine else None,
+        "price_provider": PRICES,
+        "events": StaticEvents(),
+        "market_data": StaticMarketData(),
+        "password_hasher": FAST_HASHER,
+    }
+    settings.update(overrides)
+    try:
+        with TestClient(create_app(**settings)) as c:  # "with" runs the lifespan
+            yield log_in(c)
+    finally:
+        if own_engine:  # whoever creates an engine closes it
+            settings["engine"].dispose()
+
+
+@pytest.fixture
+def shared_engine():
+    """One database for two apps: two accounts using the same server."""
+    engine = create_db_engine("sqlite://")
+    yield engine
+    engine.dispose()
+
+
 @pytest.fixture
 def client():
-    """API backed by an in-memory database, fixed prices and no income events."""
-    app = create_app(
-        engine=create_db_engine("sqlite://"),
-        price_provider=PRICES,
-        events=StaticEvents(),
-        market_data=StaticMarketData(),
-    )
-    with TestClient(app) as c:  # "with" runs the startup/shutdown (lifespan)
+    with api_client() as c:
         yield c
 
 
@@ -318,22 +357,8 @@ def event(kind, record_day, payment_day, rate, ticker="PETR4"):
 @pytest.fixture
 def events_client():
     """Factory: an API whose income events are the given list."""
-    clients = []
-
-    def make(*events):
-        app = create_app(
-            engine=create_db_engine("sqlite://"),
-            price_provider=PRICES,
-            events=StaticEvents(income=events),
-        )
-        c = TestClient(app)
-        c.__enter__()
-        clients.append(c)
-        return c
-
-    yield make
-    for c in clients:
-        c.__exit__(None, None, None)
+    with ExitStack() as stack:
+        yield lambda *events: stack.enter_context(api_client(events=StaticEvents(income=events)))
 
 
 def test_income_is_computed_from_shares_held_on_record_date(events_client):
@@ -416,12 +441,7 @@ def split_event(day, multiplier="2", ticker="PETR4"):
 
 @pytest.fixture
 def split_client():
-    app = create_app(
-        engine=create_db_engine("sqlite://"),
-        price_provider=PRICES,
-        events=StaticEvents(stock=[split_event("2026-02-01")]),
-    )
-    with TestClient(app) as c:
+    with api_client(events=StaticEvents(stock=[split_event("2026-02-01")])) as c:
         yield c
 
 
@@ -469,12 +489,7 @@ def test_list_applied_stock_events(split_client):
 def bonus_client():
     """A 10% bonus on 2026-02-01 and a split on 2026-03-01."""
     bonus = StockEvent("PETR4", StockEventType.BONUS, date(2026, 2, 1), Decimal("1.1"))
-    app = create_app(
-        engine=create_db_engine("sqlite://"),
-        price_provider=PRICES,
-        events=StaticEvents(stock=[bonus, split_event("2026-03-01")]),
-    )
-    with TestClient(app) as c:
+    with api_client(events=StaticEvents(stock=[bonus, split_event("2026-03-01")])) as c:
         c.post("/operations", json=op(qty="100", price="30", day="2026-01-05"))
         yield c
 
@@ -537,13 +552,7 @@ MON, TUE = date(2026, 3, 2), date(2026, 3, 3)
 
 
 def performance_client(market):
-    app = create_app(
-        engine=create_db_engine("sqlite://"),
-        price_provider=PRICES,
-        events=StaticEvents(),
-        market_data=market,
-    )
-    return TestClient(app)
+    return api_client(market_data=market)
 
 
 HISTORY = StaticMarketData(
@@ -707,3 +716,97 @@ def test_lci_at_100_percent_of_cdi_earns_exactly_the_cdi(fi_client):
     body = fi_client.get("/performance").json()
     assert body["twr"] == body["cdi"] == "2.01"
     assert body["pct_of_cdi"] == "100.00"
+
+
+# --- accounts and isolation --------------------------------------------------
+
+PUBLIC = {("GET", "/health"), ("POST", "/auth/register"), ("POST", "/auth/login")}
+
+
+def all_routes():
+    app = create_app(password_hasher=FAST_HASHER)  # routes only: the lifespan never runs
+    for route in app.routes:
+        for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:
+            if route.path.startswith(("/docs", "/redoc", "/openapi")):
+                continue
+            yield method, route.path
+
+
+@pytest.mark.parametrize("method, path", sorted(set(all_routes()) - PUBLIC))
+def test_every_endpoint_requires_login(method, path):
+    """Covers endpoints added later too: forgetting the login check fails here."""
+    url = path.replace("{ticker}", "PETR4").replace("{record_date}", "2026-01-05")
+    url = re.sub(r"\{\w+_id\}", "1", url)
+    with api_client() as c:
+        c.headers.pop("Authorization")
+        r = c.request(method, url, json={})
+    assert r.status_code == 401
+    assert r.json()["detail"]["code"] == "NOT_AUTHENTICATED"
+    assert r.headers["WWW-Authenticate"] == "Bearer"
+
+
+@pytest.mark.parametrize("header", ["Bearer made-up", "Basic YW5hOmxvbmc=", "Bearer ", "token"])
+def test_bad_authorization_headers(client, header):
+    client.headers["Authorization"] = header
+    assert client.get("/portfolio").status_code == 401
+
+
+def test_users_only_see_their_own_data(shared_engine):
+    engine = shared_engine
+    with api_client(engine=engine) as ana:
+        ana.post("/operations", json=op(qty="100"))
+        ana.post("/fixed-income", json=fixed())
+        with api_client(engine=engine) as bia:  # same database, another account
+            log_in(bia, "bia@example.com")
+            assert bia.get("/operations").json() == []
+            assert bia.get("/portfolio").json()["positions"] == []
+            assert bia.get("/fixed-income").json() == []
+            assert bia.get("/income").json() == []
+
+            bia.post("/operations", json=op(qty="5"))
+            assert [o["quantity"] for o in ana.get("/operations").json()] == ["100"]
+
+
+def test_other_users_rows_look_missing(shared_engine):
+    engine = shared_engine
+    with api_client(engine=engine) as ana:
+        operation = ana.post("/operations", json=op()).json()
+        investment = ana.post("/fixed-income", json=fixed()).json()
+        with api_client(engine=engine) as bia:
+            log_in(bia, "bia@example.com")
+            r = bia.delete(f"/operations/{operation['id']}")
+            assert r.status_code == 404  # not 403: ids reveal nothing
+            assert bia.delete(f"/fixed-income/{investment['id']}").status_code == 404
+            url = f"/fixed-income/{investment['id']}/redemption"
+            assert bia.put(url, json={"redeemed_on": None}).status_code == 404
+        assert len(ana.get("/operations").json()) == 1
+
+
+def test_selling_is_checked_against_your_own_position(shared_engine):
+    engine = shared_engine
+    with api_client(engine=engine) as ana:
+        ana.post("/operations", json=op(qty="100"))
+        with api_client(engine=engine) as bia:
+            log_in(bia, "bia@example.com")
+            r = bia.post("/operations", json=op("SELL", qty="10", day="2026-01-02"))
+            assert r.status_code == 422  # Ana's shares are not Bia's
+
+
+def test_register_and_login_errors():
+    with api_client() as c:  # already registered as ana@example.com
+        taken = c.post(
+            "/auth/register", json={"email": "ANA@example.com", "password": "long enough"}
+        )
+        assert (taken.status_code, taken.json()["detail"]["code"]) == (409, "EMAIL_TAKEN")
+        weak = c.post("/auth/register", json={"email": "bia@example.com", "password": "short"})
+        assert weak.json()["detail"]["code"] == "WEAK_PASSWORD"
+        bad = c.post("/auth/register", json={"email": "bia", "password": "long enough"})
+        assert bad.json()["detail"]["code"] == "INVALID_EMAIL"
+        wrong = c.post("/auth/login", json={"email": "ana@example.com", "password": "wrong one"})
+        assert (wrong.status_code, wrong.json()["detail"]["code"]) == (401, "INVALID_CREDENTIALS")
+
+
+def test_me_and_logout(client):
+    assert client.get("/auth/me").json()["email"] == "ana@example.com"
+    assert client.post("/auth/logout").status_code == 204
+    assert client.get("/auth/me").status_code == 401  # the token no longer works

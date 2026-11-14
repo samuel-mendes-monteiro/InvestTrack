@@ -17,7 +17,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from api_client import ApiClient, ApiError
+from api_client import ApiClient, ApiError, NotLoggedInError
 from formatting import brl, parse_decimal, pct, per_share, quantity
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
@@ -37,7 +37,9 @@ STOCK_EVENT_LABELS = {
 MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 
 st.set_page_config(page_title="InvestTrack", page_icon="📈", layout="wide")
-api = ApiClient(API_URL)
+# The session token lives in this browser tab's session state: closing or
+# reloading the tab logs out. The API keeps only the token's hash.
+api = ApiClient(API_URL, token=st.session_state.get("token"))
 
 
 def local_time(iso: str) -> str:
@@ -83,6 +85,36 @@ def income_table(items: list[dict]) -> pd.DataFrame:
 
 
 # --- callbacks (run before the page is redrawn) ------------------------------
+
+
+def on_login() -> None:
+    s = st.session_state
+    try:
+        s["token"] = ApiClient(API_URL).login(s.l_email, s.l_password)
+    except ApiError as e:
+        flash("error", str(e))
+    s["l_password"] = ""  # never keep the password around
+
+
+def on_register() -> None:
+    s = st.session_state
+    try:
+        if s.r_password != s.r_password2:
+            raise ApiError("As senhas não são iguais.")
+        client = ApiClient(API_URL)
+        client.register(s.r_email, s.r_password)
+        s["token"] = client.login(s.r_email, s.r_password)
+    except ApiError as e:
+        flash("error", str(e))
+    s["r_password"] = s["r_password2"] = ""
+
+
+def on_logout() -> None:
+    try:
+        api.logout()
+    except ApiError:
+        pass  # logging out locally is what matters
+    st.session_state.pop("token", None)
 
 
 def flash(kind: str, message: str) -> None:
@@ -250,7 +282,49 @@ if not api.is_up():
     st.code("uvicorn investtrack.api:app --reload", language="bash")
     st.stop()
 
+
+def show_flash() -> None:
+    if "flash" in st.session_state:
+        kind, message = st.session_state.pop("flash")
+        getattr(st, kind)(message)
+
+
+def login_page() -> None:
+    show_flash()
+    _, center, _ = st.columns([1, 2, 1])
+    with center:
+        enter, create = st.tabs(["Entrar", "Criar conta"])
+        with enter, st.form("login"):
+            st.text_input("E-mail", key="l_email")
+            st.text_input("Senha", key="l_password", type="password")
+            st.form_submit_button("Entrar", type="primary", on_click=on_login, width="stretch")
+        with create, st.form("register"):
+            st.text_input("E-mail", key="r_email")
+            st.text_input(
+                "Senha", key="r_password", type="password", help="Mínimo de 8 caracteres."
+            )
+            st.text_input("Repita a senha", key="r_password2", type="password")
+            st.form_submit_button(
+                "Criar conta", type="primary", on_click=on_register, width="stretch"
+            )
+            st.caption("A primeira conta criada fica com os dados que já existiam antes do login.")
+
+
+if "token" not in st.session_state:
+    login_page()
+    st.stop()
+
+try:
+    me = api.me()
+except NotLoggedInError:
+    st.session_state.pop("token", None)
+    flash("warning", "Sua sessão expirou. Entre de novo.")
+    st.rerun()
+
 with st.sidebar:
+    c1, c2 = st.columns([3, 1])
+    c1.caption(f"Conectado como **{me['email']}**")
+    c2.button("Sair", on_click=on_logout, key="logout")
     st.header("Nova operação")
     with st.form("new_operation"):
         st.radio("Tipo", list(OP_TYPES), key="f_op_type", horizontal=True)
@@ -269,9 +343,7 @@ with st.sidebar:
         st.text_input("Taxas (R$)", key="f_fees", placeholder="0,00")
         st.form_submit_button("Registrar", type="primary", on_click=on_create, width="stretch")
 
-if "flash" in st.session_state:
-    kind, message = st.session_state.pop("flash")
-    getattr(st, kind)(message)
+show_flash()
 
 try:
     portfolio = api.portfolio()

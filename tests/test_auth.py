@@ -1,0 +1,152 @@
+"""Accounts, passwords and sessions."""
+
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+
+import pytest
+from argon2 import PasswordHasher
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from investtrack.auth import (
+    Auth,
+    EmailTakenError,
+    InvalidCredentialsError,
+    InvalidEmailError,
+    WeakPasswordError,
+    hash_token,
+)
+from investtrack.db import create_db_engine, init_db
+from investtrack.models import Asset, AssetType, AuthSession, OperationRecord, User
+from investtrack.portfolio import OpType
+
+# Real Argon2id, with the cheapest parameters: tests stay fast.
+FAST = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+T0 = datetime(2026, 11, 14, 12, tzinfo=UTC)
+
+
+class Clock:
+    def __init__(self):
+        self.now = T0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.fixture
+def session():
+    engine = create_db_engine("sqlite://")
+    init_db(engine)
+    with Session(engine) as s:
+        yield s
+    engine.dispose()
+
+
+@pytest.fixture
+def clock():
+    return Clock()
+
+
+@pytest.fixture
+def auth(clock):
+    return Auth(hasher=FAST, clock=clock)
+
+
+def test_password_is_never_stored(session, auth):
+    user = auth.register(session, "Ana@Example.com ", "correct horse")
+    assert user.email == "ana@example.com"
+    assert "correct horse" not in user.password_hash
+    assert user.password_hash.startswith("$argon2id$")
+
+
+def test_same_password_gets_different_hashes(session, auth):
+    a = auth.register(session, "a@x.com", "same password")
+    b = auth.register(session, "b@x.com", "same password")
+    assert a.password_hash != b.password_hash  # each hash has its own salt
+
+
+@pytest.mark.parametrize("email", ["", "ana", "ana@", "@x.com", "ana @x.com", "ana@x"])
+def test_invalid_email(session, auth, email):
+    with pytest.raises(InvalidEmailError):
+        auth.register(session, email, "long enough")
+
+
+@pytest.mark.parametrize("password", ["short", "x" * 257])
+def test_password_length(session, auth, password):
+    with pytest.raises(WeakPasswordError):
+        auth.register(session, "ana@x.com", password)
+
+
+def test_email_is_unique_ignoring_case(session, auth):
+    auth.register(session, "ana@x.com", "long enough")
+    with pytest.raises(EmailTakenError):
+        auth.register(session, "ANA@x.com", "long enough")
+
+
+def test_login_and_token(session, auth):
+    user = auth.register(session, "ana@x.com", "long enough")
+    token, expires = auth.login(session, "ANA@x.com", "long enough")
+    assert expires == T0 + timedelta(days=30)
+    assert auth.user_for_token(session, token).id == user.id
+    # Only the token's hash is stored.
+    stored = session.scalar(select(AuthSession))
+    assert stored.token_hash == hash_token(token) != token
+
+
+@pytest.mark.parametrize(
+    "email, password", [("ana@x.com", "wrong password"), ("bia@x.com", "long enough"), ("x", "y")]
+)
+def test_wrong_credentials_give_the_same_error(session, auth, email, password):
+    auth.register(session, "ana@x.com", "long enough")
+    with pytest.raises(InvalidCredentialsError, match="invalid email or password"):
+        auth.login(session, email, password)
+
+
+def test_unknown_token(session, auth):
+    assert auth.user_for_token(session, "made-up") is None
+
+
+def test_session_expires(session, auth, clock):
+    auth.register(session, "ana@x.com", "long enough")
+    token, _ = auth.login(session, "ana@x.com", "long enough")
+    clock.now = T0 + timedelta(days=30)
+    assert auth.user_for_token(session, token) is None
+    assert session.scalar(select(AuthSession)) is None  # expired sessions are cleaned up
+
+
+def test_logout(session, auth):
+    auth.register(session, "ana@x.com", "long enough")
+    token, _ = auth.login(session, "ana@x.com", "long enough")
+    auth.logout(session, token)
+    assert auth.user_for_token(session, token) is None
+
+
+def test_weak_old_hash_is_upgraded_on_login(session, clock):
+    weak = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+    Auth(hasher=weak, clock=clock).register(session, "ana@x.com", "long enough")
+    stronger = PasswordHasher(time_cost=2, memory_cost=16, parallelism=1)
+    Auth(hasher=stronger, clock=clock).login(session, "ana@x.com", "long enough")
+    assert "t=2" in session.scalar(select(User)).password_hash
+
+
+def test_first_account_adopts_data_from_before_v05(session, auth):
+    asset = Asset(ticker="PETR4", asset_type=AssetType.STOCK)
+    session.add(asset)
+    session.flush()
+    session.add(
+        OperationRecord(
+            asset_id=asset.id,
+            op_type=OpType.BUY,
+            date=date(2026, 1, 5),
+            quantity=Decimal("100"),
+            price=Decimal("30"),
+            fees=Decimal("0"),
+        )
+    )
+    session.commit()
+
+    first = auth.register(session, "ana@x.com", "long enough")
+    second = auth.register(session, "bia@x.com", "long enough")
+    owners = session.execute(text("SELECT user_id FROM operations")).scalars().all()
+    assert owners == [first.id]
+    assert second.id not in owners

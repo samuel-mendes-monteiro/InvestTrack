@@ -10,13 +10,43 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, String
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from investtrack.db import Base, SafeDecimal
 from investtrack.fixed_income import Indexer, Product
 from investtrack.income import IncomeType
 from investtrack.portfolio import OpType, StockEventType
+
+
+class User(Base):
+    """An account. The password itself is never stored, only its Argon2 hash."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)  # always lowercase
+    password_hash: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSession(Base):
+    """A logged-in session. Only the SHA-256 of the token is stored: whoever
+    reads the database can't use it to log in, and logging out deletes the row."""
+
+    __tablename__ = "auth_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# Every table with the user's own data has an owner. The column is nullable
+# only for rows created before v0.5, which the first account adopts; the
+# application always sets it.
+def owner_column() -> Mapped[int | None]:
+    return mapped_column(ForeignKey("users.id"), index=True)
 
 
 class AssetType(StrEnum):
@@ -45,6 +75,7 @@ class OperationRecord(Base):
     __tablename__ = "operations"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = owner_column()
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"))
     op_type: Mapped[OpType] = mapped_column(Enum(OpType, native_enum=False, length=10))
     date: Mapped[date] = mapped_column(Date)
@@ -74,6 +105,7 @@ class IncomeRecord(Base):
     __tablename__ = "incomes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = owner_column()
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"))
     income_type: Mapped[IncomeType] = mapped_column(Enum(IncomeType, native_enum=False, length=20))
     date: Mapped[date] = mapped_column(Date)
@@ -166,9 +198,15 @@ class BonusCost(Base):
 
     __tablename__ = "bonus_costs"
 
-    ticker: Mapped[str] = mapped_column(String(12), primary_key=True)
-    record_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # Per user, although the value is the same for everyone: one person's
+    # typo must never change another person's average price.
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = owner_column()
+    ticker: Mapped[str] = mapped_column(String(12))
+    record_date: Mapped[date] = mapped_column(Date)
     unit_cost: Mapped[Decimal] = mapped_column(SafeDecimal)
+
+    __table_args__ = (UniqueConstraint("user_id", "ticker", "record_date"),)
 
 
 class DailyPrice(Base):
@@ -216,6 +254,7 @@ class FixedIncomeRecord(Base):
     __tablename__ = "fixed_income"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = owner_column()
     name: Mapped[str] = mapped_column(String(100))
     product: Mapped[Product] = mapped_column(Enum(Product, native_enum=False, length=10))
     indexer: Mapped[Indexer] = mapped_column(Enum(Indexer, native_enum=False, length=10))

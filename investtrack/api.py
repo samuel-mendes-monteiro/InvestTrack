@@ -14,12 +14,20 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated
 
+from argon2 import PasswordHasher
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, status
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from investtrack import repository
+from investtrack.auth import (
+    Auth,
+    EmailTakenError,
+    InvalidCredentialsError,
+    InvalidEmailError,
+    WeakPasswordError,
+)
 from investtrack.b3 import B3Client
 from investtrack.brapi import BrapiClient
 from investtrack.db import create_db_engine, init_db
@@ -32,12 +40,13 @@ from investtrack.income import (
     net_income_by_ticker,
 )
 from investtrack.market_data import CDI, IBOV, MarketData, MarketDataSource
-from investtrack.models import OperationRecord
+from investtrack.models import OperationRecord, User
 from investtrack.performance import cdi_accumulated, index_return, portfolio_history
 from investtrack.portfolio import InsufficientPositionError, Operation, value_position
 from investtrack.prices import CachedPriceProvider, PriceProvider
 from investtrack.schemas import (
     BonusCostIn,
+    Credentials,
     ErrorOut,
     FixedIncomeCreate,
     FixedIncomeOut,
@@ -52,7 +61,9 @@ from investtrack.schemas import (
     PortfolioTotals,
     PositionOut,
     RedeemIn,
+    SessionOut,
     StockEventOut,
+    UserOut,
 )
 
 # --- dependencies ------------------------------------------------------------
@@ -76,7 +87,32 @@ def get_market_data(request: Request) -> MarketDataSource:
     return request.app.state.market_data
 
 
+def bearer_token(request: Request) -> str | None:
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    if scheme.lower() != "bearer":
+        return None
+    return token.strip() or None
+
+
+def get_current_user(request: Request, session: Annotated[Session, Depends(get_session)]) -> User:
+    """The logged-in user, from the "Authorization: Bearer <token>" header.
+
+    Every endpoint with user data depends on this, so a request without a
+    valid session never reaches it.
+    """
+    token = bearer_token(request)
+    user = request.app.state.auth.user_for_token(session, token) if token else None
+    if user is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            {"code": "NOT_AUTHENTICATED", "message": "missing, invalid or expired session"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
 SessionDep = Annotated[Session, Depends(get_session)]
+UserDep = Annotated[User, Depends(get_current_user)]
 MarketDep = Annotated[MarketDataSource, Depends(get_market_data)]
 PricesDep = Annotated[PriceProvider, Depends(get_price_provider)]
 EventsDep = Annotated[EventSource, Depends(get_events)]
@@ -134,10 +170,14 @@ def income_to_out(income_id: int | None, income: Income) -> IncomeOut:
     )
 
 
-def all_incomes(session: Session, events: EventSource) -> list[tuple[int | None, Income]]:
+def all_incomes(
+    session: Session, user_id: int, events: EventSource
+) -> list[tuple[int | None, Income]]:
     """Manual entries (with their id) and computed income, by payment date."""
-    manual = [(r.id, repository.income_to_domain(r)) for r in repository.list_incomes(session)]
-    computed = [(None, i) for i in repository.computed_incomes(session, events)]
+    manual = [
+        (r.id, repository.income_to_domain(r)) for r in repository.list_incomes(session, user_id)
+    ]
+    computed = [(None, i) for i in repository.computed_incomes(session, user_id, events)]
     return sorted(manual + computed, key=lambda pair: (pair[1].date, pair[1].ticker))
 
 
@@ -210,8 +250,10 @@ def create_app(
     price_provider: PriceProvider | None = None,
     events: EventSource | None = None,
     market_data: MarketDataSource | None = None,
+    password_hasher: PasswordHasher | None = None,
 ) -> FastAPI:
-    """Build the app. Tests pass their own engine, prices, events and history."""
+    """Build the app. Tests pass their own engine, prices, events, history
+    and a cheap password hasher."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -221,14 +263,16 @@ def create_app(
         app.state.price_provider = price_provider or default_price_provider(app.state.engine)
         app.state.events = events or StoredEvents(app.state.engine, B3Client().fetch_events)
         app.state.market_data = market_data or MarketData(app.state.engine)
+        app.state.auth = Auth(hasher=password_hasher)
         init_db(app.state.engine)
         yield
-        app.state.engine.dispose()
+        if engine is None:  # only close what this app created: a given engine may be shared
+            app.state.engine.dispose()
 
     app = FastAPI(
         title="InvestTrack API",
         description="Portfolio tracker for the Brazilian stock market (B3).",
-        version="0.4.0",
+        version="0.5.0",
         lifespan=lifespan,
     )
 
@@ -236,6 +280,47 @@ def create_app(
     def health(session: SessionDep) -> dict[str, str]:
         session.execute(text("SELECT 1"))  # fails if the database is unreachable
         return {"status": "ok"}
+
+    @app.post(
+        "/auth/register",
+        status_code=status.HTTP_201_CREATED,
+        tags=["auth"],
+        responses={
+            409: {"model": ErrorOut, "description": "Email already registered"},
+            422: {"model": ErrorOut, "description": "Invalid email or weak password"},
+        },
+    )
+    def register(payload: Credentials, session: SessionDep, request: Request) -> UserOut:
+        """Create an account. The first account adopts data from before v0.5."""
+        try:
+            user = request.app.state.auth.register(session, payload.email, payload.password)
+        except EmailTakenError as e:
+            raise api_error(409, "EMAIL_TAKEN", e) from e
+        except InvalidEmailError as e:
+            raise api_error(422, "INVALID_EMAIL", e) from e
+        except WeakPasswordError as e:
+            raise api_error(422, "WEAK_PASSWORD", e) from e
+        return UserOut(id=user.id, email=user.email)
+
+    @app.post(
+        "/auth/login",
+        tags=["auth"],
+        responses={401: {"model": ErrorOut, "description": "Wrong email or password"}},
+    )
+    def login(payload: Credentials, session: SessionDep, request: Request) -> SessionOut:
+        try:
+            token, expires = request.app.state.auth.login(session, payload.email, payload.password)
+        except InvalidCredentialsError as e:
+            raise api_error(401, "INVALID_CREDENTIALS", e) from e
+        return SessionOut(token=token, expires_at=expires)
+
+    @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["auth"])
+    def logout(session: SessionDep, user: UserDep, request: Request) -> None:
+        request.app.state.auth.logout(session, bearer_token(request))
+
+    @app.get("/auth/me", tags=["auth"])
+    def me(user: UserDep) -> UserOut:
+        return UserOut(id=user.id, email=user.email)
 
     @app.post(
         "/operations",
@@ -246,7 +331,7 @@ def create_app(
         },
     )
     def create_operation(
-        payload: OperationCreate, session: SessionDep, events: EventsDep
+        payload: OperationCreate, session: SessionDep, user: UserDep, events: EventsDep
     ) -> OperationOut:
         try:
             op = Operation(
@@ -257,7 +342,7 @@ def create_app(
                 price=payload.price,
                 fees=payload.fees,
             )
-            record = repository.add_operation(session, op, payload.asset_type, events)
+            record = repository.add_operation(session, user.id, op, payload.asset_type, events)
         except InsufficientPositionError as e:
             raise api_error(422, "INSUFFICIENT_POSITION", e) from e
         except ValueError as e:  # domain validation, e.g. a blank ticker
@@ -267,9 +352,10 @@ def create_app(
     @app.get("/operations", tags=["operations"])
     def list_operations(
         session: SessionDep,
+        user: UserDep,
         ticker: Annotated[str | None, Query(description="Filter by ticker")] = None,
     ) -> list[OperationOut]:
-        return [to_out(r) for r in repository.list_operations(session, ticker)]
+        return [to_out(r) for r in repository.list_operations(session, user.id, ticker)]
 
     @app.delete(
         "/operations/{operation_id}",
@@ -283,9 +369,11 @@ def create_app(
             },
         },
     )
-    def delete_operation(operation_id: int, session: SessionDep, events: EventsDep) -> None:
+    def delete_operation(
+        operation_id: int, session: SessionDep, user: UserDep, events: EventsDep
+    ) -> None:
         try:
-            repository.delete_operation(session, operation_id, events)
+            repository.delete_operation(session, user.id, operation_id, events)
         except repository.OperationNotFoundError as e:
             raise api_error(404, "OPERATION_NOT_FOUND", e) from e
         except InsufficientPositionError as e:
@@ -294,9 +382,11 @@ def create_app(
             raise api_error(409, "DELETE_ORPHANS_INCOME", e) from e
 
     @app.get("/stock-events", tags=["operations"])
-    def list_stock_events(session: SessionDep, events: EventsDep) -> list[StockEventOut]:
+    def list_stock_events(
+        session: SessionDep, user: UserDep, events: EventsDep
+    ) -> list[StockEventOut]:
         """Splits, reverse splits and bonus shares that changed one of your positions."""
-        costs = repository.bonus_costs(session)
+        costs = repository.bonus_costs(session, user.id)
         return [
             StockEventOut(
                 ticker=a.event.ticker,
@@ -307,7 +397,7 @@ def create_app(
                 quantity_after=a.quantity_after,
                 unit_cost=costs.get((a.event.ticker, a.event.record_date)),
             )
-            for a in repository.get_applied_stock_events(session, events)
+            for a in repository.get_applied_stock_events(session, user.id, events)
         ]
 
     @app.put(
@@ -317,11 +407,18 @@ def create_app(
         responses={404: {"model": ErrorOut, "description": "No bonus event on that date"}},
     )
     def set_bonus_cost(
-        ticker: str, record_date: date, payload: BonusCostIn, session: SessionDep, events: EventsDep
+        ticker: str,
+        record_date: date,
+        payload: BonusCostIn,
+        session: SessionDep,
+        user: UserDep,
+        events: EventsDep,
     ) -> None:
         """Attributed cost (custo atribuído) of bonus shares, from the company's notice."""
         try:
-            repository.set_bonus_cost(session, ticker, record_date, payload.unit_cost, events)
+            repository.set_bonus_cost(
+                session, user.id, ticker, record_date, payload.unit_cost, events
+            )
         except repository.StockEventNotFoundError as e:
             raise api_error(404, "STOCK_EVENT_NOT_FOUND", e) from e
 
@@ -330,9 +427,11 @@ def create_app(
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["operations"],
     )
-    def delete_bonus_cost(ticker: str, record_date: date, session: SessionDep) -> None:
+    def delete_bonus_cost(
+        ticker: str, record_date: date, session: SessionDep, user: UserDep
+    ) -> None:
         """Back to zero cost."""
-        repository.delete_bonus_cost(session, ticker, record_date)
+        repository.delete_bonus_cost(session, user.id, ticker, record_date)
 
     @app.post(
         "/income",
@@ -342,7 +441,7 @@ def create_app(
             422: {"model": ErrorOut, "description": "Invalid data, or ticker not bought by then"}
         },
     )
-    def create_income(payload: IncomeCreate, session: SessionDep) -> IncomeOut:
+    def create_income(payload: IncomeCreate, session: SessionDep, user: UserDep) -> IncomeOut:
         try:
             income = Income(
                 ticker=payload.ticker,
@@ -351,7 +450,7 @@ def create_app(
                 amount=payload.amount,
                 tax=payload.tax,
             )
-            record = repository.add_income(session, income)
+            record = repository.add_income(session, user.id, income)
         except IncomeWithoutPositionError as e:  # before ValueError: it is a subclass
             raise api_error(422, "INCOME_WITHOUT_POSITION", e) from e
         except ValueError as e:
@@ -361,6 +460,7 @@ def create_app(
     @app.get("/income", tags=["income"])
     def list_income(
         session: SessionDep,
+        user: UserDep,
         events: EventsDep,
         ticker: Annotated[str | None, Query(description="Filter by ticker")] = None,
         year: Annotated[int | None, Query(description="Filter by payment year")] = None,
@@ -369,7 +469,7 @@ def create_app(
         ticker = ticker.strip().upper() if ticker else None
         return [
             income_to_out(income_id, income)
-            for income_id, income in all_incomes(session, events)
+            for income_id, income in all_incomes(session, user.id, events)
             if (ticker is None or income.ticker == ticker)
             and (year is None or income.date.year == year)
         ]
@@ -377,11 +477,16 @@ def create_app(
     @app.get("/income/monthly", tags=["income"])
     def income_per_month(
         session: SessionDep,
+        user: UserDep,
         events: EventsDep,
         year: Annotated[int | None, Query(description="Only this year")] = None,
     ) -> list[MonthlyIncomeOut]:
         """Income already received, per month. Pending income is not included."""
-        incomes = [i for i in received(all_incomes(session, events)) if year in (None, i.date.year)]
+        incomes = [
+            i
+            for i in received(all_incomes(session, user.id, events))
+            if year in (None, i.date.year)
+        ]
         return [MonthlyIncomeOut(**vars(m)) for m in monthly_income(incomes)]
 
     @app.delete(
@@ -390,15 +495,16 @@ def create_app(
         tags=["income"],
         responses={404: {"model": ErrorOut, "description": "Income not found"}},
     )
-    def delete_income(income_id: int, session: SessionDep) -> None:
+    def delete_income(income_id: int, session: SessionDep, user: UserDep) -> None:
         try:
-            repository.delete_income(session, income_id)
+            repository.delete_income(session, user.id, income_id)
         except repository.IncomeNotFoundError as e:
             raise api_error(404, "INCOME_NOT_FOUND", e) from e
 
     @app.get("/portfolio", tags=["portfolio"])
     def get_portfolio(
         session: SessionDep,
+        user: UserDep,
         prices: PricesDep,
         events: EventsDep,
         market: MarketDep,
@@ -408,11 +514,11 @@ def create_app(
         total_invested = Decimal("0")
         total_value: Decimal | None = Decimal("0")
         total_realized = Decimal("0")
-        incomes = all_incomes(session, events)
+        incomes = all_incomes(session, user.id, events)
         income = net_income_by_ticker(received(incomes))
         pending = sum((i.net for _, i in incomes if i.date > date.today()), Decimal("0"))
 
-        for pos in repository.get_portfolio(session, events).values():
+        for pos in repository.get_portfolio(session, user.id, events).values():
             total_realized += pos.realized_profit
             invested = pos.quantity * pos.avg_price
             total_invested += invested
@@ -465,7 +571,7 @@ def create_app(
                 fixed_income=sum(
                     (
                         f.net
-                        for f in list_fixed_income(session, market, background)
+                        for f in list_fixed_income(session, user.id, market, background)
                         if f.status == "ACTIVE" and f.net is not None
                     ),
                     Decimal("0"),
@@ -474,9 +580,9 @@ def create_app(
         )
 
     def list_fixed_income(
-        session: Session, market: MarketDataSource, background: BackgroundTasks
+        session: Session, user_id: int, market: MarketDataSource, background: BackgroundTasks
     ) -> list[FixedIncomeOut]:
-        records = repository.list_fixed_income(session)
+        records = repository.list_fixed_income(session, user_id)
         if not records:
             return []
         start = min(r.start for r in records)
@@ -496,6 +602,7 @@ def create_app(
     def create_fixed_income(
         payload: FixedIncomeCreate,
         session: SessionDep,
+        user: UserDep,
         market: MarketDep,
         background: BackgroundTasks,
     ) -> FixedIncomeOut:
@@ -503,7 +610,7 @@ def create_app(
             investment = FixedIncome(**payload.model_dump())
         except ValueError as e:
             raise api_error(422, "INVALID_FIXED_INCOME", e) from e
-        record = repository.add_fixed_income(session, investment)
+        record = repository.add_fixed_income(session, user.id, investment)
         if not market.syncing and not market.is_synced(investment.start):
             background.add_task(market.sync, investment.start)
         days, cdi = business_days(market, investment.start)
@@ -511,10 +618,10 @@ def create_app(
 
     @app.get("/fixed-income", tags=["fixed income"])
     def get_fixed_income(
-        session: SessionDep, market: MarketDep, background: BackgroundTasks
+        session: SessionDep, user: UserDep, market: MarketDep, background: BackgroundTasks
     ) -> list[FixedIncomeOut]:
         """Each investment valued at its last day (today, redemption or maturity)."""
-        return list_fixed_income(session, market, background)
+        return list_fixed_income(session, user.id, market, background)
 
     @app.put(
         "/fixed-income/{investment_id}/redemption",
@@ -525,11 +632,13 @@ def create_app(
         },
     )
     def redeem_fixed_income(
-        investment_id: int, payload: RedeemIn, session: SessionDep, market: MarketDep
+        investment_id: int, payload: RedeemIn, session: SessionDep, user: UserDep, market: MarketDep
     ) -> FixedIncomeOut:
         """Early redemption (the whole investment), or null to undo it."""
         try:
-            record = repository.redeem_fixed_income(session, investment_id, payload.redeemed_on)
+            record = repository.redeem_fixed_income(
+                session, user.id, investment_id, payload.redeemed_on
+            )
         except repository.FixedIncomeNotFoundError as e:
             raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
         except ValueError as e:
@@ -543,24 +652,29 @@ def create_app(
         tags=["fixed income"],
         responses={404: {"model": ErrorOut, "description": "Not found"}},
     )
-    def delete_fixed_income(investment_id: int, session: SessionDep) -> None:
+    def delete_fixed_income(investment_id: int, session: SessionDep, user: UserDep) -> None:
         try:
-            repository.delete_fixed_income(session, investment_id)
+            repository.delete_fixed_income(session, user.id, investment_id)
         except repository.FixedIncomeNotFoundError as e:
             raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
 
     @app.get("/performance", tags=["portfolio"])
     def performance(
-        session: SessionDep, events: EventsDep, market: MarketDep, background: BackgroundTasks
+        session: SessionDep,
+        user: UserDep,
+        events: EventsDep,
+        market: MarketDep,
+        background: BackgroundTasks,
     ) -> PerformanceOut:
         """Time-weighted return since the first trade, against CDI and Ibovespa.
 
         Answers right away with the history already stored. If something is
         missing, it is downloaded in the background and `syncing` is true.
         """
-        operations, stock = repository.operations_and_stock_events(session, events)
+        operations, stock = repository.operations_and_stock_events(session, user.id, events)
         investments = [
-            repository.fixed_income_to_domain(r) for r in repository.list_fixed_income(session)
+            repository.fixed_income_to_domain(r)
+            for r in repository.list_fixed_income(session, user.id)
         ]
         if not operations and not investments:
             return PerformanceOut(
@@ -588,7 +702,7 @@ def create_app(
             for d in set(ibov) | {d for by_day in closes.values() for d in by_day}
             if start <= d <= last_day
         )
-        incomes = [i for i in received(all_incomes(session, events)) if i.date <= last_day]
+        incomes = [i for i in received(all_incomes(session, user.id, events)) if i.date <= last_day]
         fi_values, fi_flows = daily_series(investments, *business_days(market, start))
         history = portfolio_history(
             operations, days, closes, stock, incomes, other_values=fi_values, other_flows=fi_flows

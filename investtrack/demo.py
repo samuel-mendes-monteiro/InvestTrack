@@ -1,16 +1,19 @@
-"""Stage 2 demo: create the database, insert sample operations, print the portfolio.
+"""Demo: a database with a demo account, sample trades and income.
 
 Run with:  python -m investtrack.demo
+Then log in to the web interface with the email and password printed.
 """
 
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from investtrack.auth import Auth
 from investtrack.db import create_db_engine, init_db
 from investtrack.income import Income, IncomeType, net_income_by_ticker
-from investtrack.models import AssetType
+from investtrack.models import AssetType, OperationRecord, User
 from investtrack.portfolio import Operation, OpType
 from investtrack.repository import (
     add_income,
@@ -48,6 +51,10 @@ INCOME = [
 ]
 
 
+DEMO_EMAIL = "demo@investtrack.local"
+DEMO_PASSWORD = "demo-password"
+
+
 def money(value: Decimal) -> str:
     """Round only for display, never during calculations."""
     rounded = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -59,20 +66,32 @@ def main() -> None:
     init_db(engine)
 
     with Session(engine) as session:
-        if not list_operations(session):
+        user = session.scalar(select(User).where(User.email == DEMO_EMAIL))
+        if user is None:
+            if session.scalar(select(OperationRecord).where(OperationRecord.user_id.is_(None))):
+                # The first account adopts data without an owner: a demo account
+                # must never take someone's real portfolio.
+                print("This database already has data from before accounts existed.")
+                print("Create your own account in the web interface instead.")
+                return
+            user = Auth().register(session, DEMO_EMAIL, DEMO_PASSWORD)
+
+        if not list_operations(session, user.id):
             for op, asset_type in SAMPLE:
-                add_operation(session, op, asset_type)
+                add_operation(session, user.id, op, asset_type)
             for income in INCOME:
-                add_income(session, income)
+                add_income(session, user.id, income)
             print(f"Inserted {len(SAMPLE)} operations and {len(INCOME)} income into {engine.url}\n")
 
         # Only manual entries here: B3 income is computed by the API.
-        income = net_income_by_ticker([income_to_domain(r) for r in list_incomes(session)])
+        records = list_incomes(session, user.id)
+        income = net_income_by_ticker([income_to_domain(r) for r in records])
         print(f"{'Ticker':<8} {'Qty':>8} {'Avg price':>13} {'Realized':>13} {'Income':>13}")
-        for pos in get_portfolio(session).values():
+        for pos in get_portfolio(session, user.id).values():
             avg, realized = money(pos.avg_price), money(pos.realized_profit)
             received = money(income.get(pos.ticker, Decimal("0")))
             print(f"{pos.ticker:<8} {pos.quantity:>8} {avg} {realized} {received}")
+        print(f"\nLog in with {DEMO_EMAIL} / {DEMO_PASSWORD}")
 
     engine.dispose()  # close pooled connections before the program exits
 

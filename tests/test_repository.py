@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -15,7 +15,7 @@ from investtrack.income import (
     IncomeWithoutPositionError,
     TickerEvents,
 )
-from investtrack.models import Asset, AssetType, OperationRecord
+from investtrack.models import Asset, AssetType, OperationRecord, User
 from investtrack.portfolio import (
     InsufficientPositionError,
     Operation,
@@ -39,13 +39,17 @@ from investtrack.repository import (
     set_bonus_cost,
 )
 
+USER = 1  # the first account of a fresh database
+
 
 @pytest.fixture
 def session():
-    """A fresh in-memory SQLite database for each test."""
+    """A fresh in-memory SQLite database for each test, with one account."""
     engine = create_db_engine("sqlite://")
     init_db(engine)
     with Session(engine) as s:
+        s.add(User(email="ana@example.com", password_hash="-", created_at=datetime.now(UTC)))
+        s.commit()
         yield s
     engine.dispose()
 
@@ -63,23 +67,23 @@ def sell(day: int, qty: str, price: str, fees: str = "0", ticker: str = "PETR4")
 
 
 def test_decimal_round_trip_is_exact(session):
-    add_operation(session, buy(1, "0.1", "35.123456789", fees="0.2"))
+    add_operation(session, USER, buy(1, "0.1", "35.123456789", fees="0.2"))
     session.expire_all()  # force a real read from the database
 
-    record = list_operations(session)[0]
+    record = list_operations(session, USER)[0]
     assert isinstance(record.price, Decimal)
     assert record.price == Decimal("35.123456789")
     assert record.quantity + record.fees == Decimal("0.3")  # would fail with float
 
 
 def test_asset_is_created_once_per_ticker(session):
-    add_operation(session, buy(1, "100", "30"))
-    add_operation(session, buy(2, "100", "40"))
+    add_operation(session, USER, buy(1, "100", "30"))
+    add_operation(session, USER, buy(2, "100", "40"))
     assert len(session.scalars(select(Asset)).all()) == 1
 
 
 def test_asset_type_is_saved(session):
-    add_operation(session, buy(1, "10", "158", ticker="HGLG11"), AssetType.FII)
+    add_operation(session, USER, buy(1, "10", "158", ticker="HGLG11"), AssetType.FII)
     asset = session.scalar(select(Asset))
     assert asset.asset_type is AssetType.FII
 
@@ -111,54 +115,54 @@ def test_foreign_keys_are_enforced(session):
 
 
 def test_list_is_ordered_by_date_and_filterable(session):
-    add_operation(session, buy(5, "1", "10", ticker="VALE3"))
-    add_operation(session, buy(1, "1", "10"))
-    add_operation(session, buy(3, "1", "10"))
+    add_operation(session, USER, buy(5, "1", "10", ticker="VALE3"))
+    add_operation(session, USER, buy(1, "1", "10"))
+    add_operation(session, USER, buy(3, "1", "10"))
 
-    assert [r.date.day for r in list_operations(session)] == [1, 3, 5]
-    assert [r.asset.ticker for r in list_operations(session, "vale3")] == ["VALE3"]
+    assert [r.date.day for r in list_operations(session, USER)] == [1, 3, 5]
+    assert [r.asset.ticker for r in list_operations(session, USER, "vale3")] == ["VALE3"]
 
 
 def test_selling_more_than_owned_is_refused_and_not_saved(session):
-    add_operation(session, buy(1, "100", "30"))
+    add_operation(session, USER, buy(1, "100", "30"))
     with pytest.raises(InsufficientPositionError):
-        add_operation(session, sell(2, "101", "35"))
-    assert len(list_operations(session)) == 1
+        add_operation(session, USER, sell(2, "101", "35"))
+    assert len(list_operations(session, USER)) == 1
 
 
 def test_backdated_sale_is_checked_against_history(session):
-    add_operation(session, buy(10, "100", "30"))
+    add_operation(session, USER, buy(10, "100", "30"))
     with pytest.raises(InsufficientPositionError):
-        add_operation(session, sell(5, "10", "35"))  # before the buy existed
+        add_operation(session, USER, sell(5, "10", "35"))  # before the buy existed
 
 
 def test_delete_operation(session):
-    record = add_operation(session, buy(1, "100", "30"))
-    delete_operation(session, record.id)
-    assert list_operations(session) == []
+    record = add_operation(session, USER, buy(1, "100", "30"))
+    delete_operation(session, USER, record.id)
+    assert list_operations(session, USER) == []
 
 
 def test_delete_that_breaks_a_later_sale_is_refused(session):
-    first_buy = add_operation(session, buy(1, "100", "30"))
-    add_operation(session, sell(2, "80", "35"))
+    first_buy = add_operation(session, USER, buy(1, "100", "30"))
+    add_operation(session, USER, sell(2, "80", "35"))
 
     with pytest.raises(InsufficientPositionError):
-        delete_operation(session, first_buy.id)
-    assert len(list_operations(session)) == 2
+        delete_operation(session, USER, first_buy.id)
+    assert len(list_operations(session, USER)) == 2
 
 
 def test_delete_unknown_operation(session):
     with pytest.raises(OperationNotFoundError):
-        delete_operation(session, 42)
+        delete_operation(session, USER, 42)
 
 
 def test_portfolio_from_database(session):
-    add_operation(session, buy(1, "100", "30", fees="10"))
-    add_operation(session, buy(2, "100", "40", fees="10"))
-    add_operation(session, sell(3, "50", "50", fees="10"))
-    add_operation(session, buy(1, "10", "158.40", ticker="HGLG11"), AssetType.FII)
+    add_operation(session, USER, buy(1, "100", "30", fees="10"))
+    add_operation(session, USER, buy(2, "100", "40", fees="10"))
+    add_operation(session, USER, sell(3, "50", "50", fees="10"))
+    add_operation(session, USER, buy(1, "10", "158.40", ticker="HGLG11"), AssetType.FII)
 
-    portfolio = get_portfolio(session)
+    portfolio = get_portfolio(session, USER)
     assert portfolio["PETR4"].quantity == Decimal("150")
     assert portfolio["PETR4"].avg_price == Decimal("35.10")
     assert portfolio["PETR4"].realized_profit == Decimal("735")
@@ -166,7 +170,7 @@ def test_portfolio_from_database(session):
 
 
 def test_values_are_stored_as_text_on_sqlite(session):
-    add_operation(session, buy(1, "100", "30.10"))
+    add_operation(session, USER, buy(1, "100", "30.10"))
     stored_type = session.execute(text("SELECT typeof(price) FROM operations")).scalar()
     assert stored_type == "text"  # not "real", i.e. never a float
 
@@ -179,71 +183,71 @@ def dividend(day: int, amount: str, tax: str = "0", ticker: str = "PETR4"):
 
 
 def test_add_and_list_income(session):
-    add_operation(session, buy(1, "100", "30"))
-    add_income(session, dividend(5, "45.10"))
+    add_operation(session, USER, buy(1, "100", "30"))
+    add_income(session, USER, dividend(5, "45.10"))
     session.expire_all()
 
-    record = list_incomes(session)[0]
+    record = list_incomes(session, USER)[0]
     assert record.asset.ticker == "PETR4"
     assert record.amount == Decimal("45.10")
 
 
 def test_income_before_first_buy_is_refused_and_not_saved(session):
-    add_operation(session, buy(10, "100", "30"))
+    add_operation(session, USER, buy(10, "100", "30"))
     with pytest.raises(IncomeWithoutPositionError):
-        add_income(session, dividend(5, "10"))
-    assert list_incomes(session) == []
+        add_income(session, USER, dividend(5, "10"))
+    assert list_incomes(session, USER) == []
 
 
 def test_income_for_unknown_ticker_does_not_create_asset(session):
     with pytest.raises(IncomeWithoutPositionError):
-        add_income(session, dividend(5, "10", ticker="PETR3"))
+        add_income(session, USER, dividend(5, "10", ticker="PETR3"))
     assert session.scalars(select(Asset)).all() == []
 
 
 def test_list_income_filters_by_ticker_and_year(session):
-    add_operation(session, buy(1, "100", "30"))
-    add_operation(session, buy(1, "10", "158", ticker="HGLG11"), AssetType.FII)
-    add_income(session, dividend(5, "10"))
-    add_income(session, dividend(6, "1", ticker="HGLG11"))
+    add_operation(session, USER, buy(1, "100", "30"))
+    add_operation(session, USER, buy(1, "10", "158", ticker="HGLG11"), AssetType.FII)
+    add_income(session, USER, dividend(5, "10"))
+    add_income(session, USER, dividend(6, "1", ticker="HGLG11"))
 
-    assert [r.asset.ticker for r in list_incomes(session, "hglg11")] == ["HGLG11"]
-    assert len(list_incomes(session, year=2026)) == 2
-    assert list_incomes(session, year=2025) == []
+    assert [r.asset.ticker for r in list_incomes(session, USER, "hglg11")] == ["HGLG11"]
+    assert len(list_incomes(session, USER, year=2026)) == 2
+    assert list_incomes(session, USER, year=2025) == []
 
 
 def test_delete_income(session):
-    add_operation(session, buy(1, "100", "30"))
-    record = add_income(session, dividend(5, "10"))
-    delete_income(session, record.id)
-    assert list_incomes(session) == []
+    add_operation(session, USER, buy(1, "100", "30"))
+    record = add_income(session, USER, dividend(5, "10"))
+    delete_income(session, USER, record.id)
+    assert list_incomes(session, USER) == []
 
 
 def test_delete_unknown_income(session):
     with pytest.raises(IncomeNotFoundError):
-        delete_income(session, 42)
+        delete_income(session, USER, 42)
 
 
 def test_deleting_the_buy_behind_an_income_is_refused(session):
-    first_buy = add_operation(session, buy(1, "100", "30"))
-    add_operation(session, buy(10, "100", "30"))
-    add_income(session, dividend(5, "10"))
+    first_buy = add_operation(session, USER, buy(1, "100", "30"))
+    add_operation(session, USER, buy(10, "100", "30"))
+    add_income(session, USER, dividend(5, "10"))
 
     with pytest.raises(IncomeWithoutPositionError):
-        delete_operation(session, first_buy.id)
-    assert len(list_operations(session)) == 2
+        delete_operation(session, USER, first_buy.id)
+    assert len(list_operations(session, USER)) == 2
 
 
 def test_deleting_a_later_buy_keeps_income_valid(session):
-    add_operation(session, buy(1, "100", "30"))
-    later = add_operation(session, buy(10, "100", "30"))
-    add_income(session, dividend(5, "10"))
-    delete_operation(session, later.id)  # first buy still covers the income
+    add_operation(session, USER, buy(1, "100", "30"))
+    later = add_operation(session, USER, buy(10, "100", "30"))
+    add_income(session, USER, dividend(5, "10"))
+    delete_operation(session, USER, later.id)  # first buy still covers the income
 
 
 def test_computed_incomes_use_each_asset_type(session):
-    add_operation(session, buy(1, "100", "30"))
-    add_operation(session, buy(1, "10", "158", ticker="HGLG11"), AssetType.FII)
+    add_operation(session, USER, buy(1, "100", "30"))
+    add_operation(session, USER, buy(1, "10", "158", ticker="HGLG11"), AssetType.FII)
     asked = []
 
     class Events:
@@ -255,7 +259,7 @@ def test_computed_incomes_use_each_asset_type(session):
             )
             return TickerEvents([income], [])
 
-    incomes = computed_incomes(session, Events())
+    incomes = computed_incomes(session, USER, Events())
     assert sorted(asked) == [("HGLG11", AssetType.FII), ("PETR4", AssetType.STOCK)]
     assert {i.ticker: i.amount for i in incomes} == {
         "PETR4": Decimal("50"),
@@ -266,12 +270,12 @@ def test_computed_incomes_use_each_asset_type(session):
 def test_bonus_cost_lowercase_ticker_and_delete_missing(session):
     bonus = StockEvent("PETR4", StockEventType.BONUS, date(2026, 1, 5), Decimal("1.1"))
     events = StaticEvents(stock=[bonus])
-    add_operation(session, buy(1, "100", "30"), events=events)
+    add_operation(session, USER, buy(1, "100", "30"), events=events)
 
-    set_bonus_cost(session, "petr4", date(2026, 1, 5), Decimal("7.82"), events)
-    assert bonus_costs(session) == {("PETR4", date(2026, 1, 5)): Decimal("7.82")}
-    assert get_portfolio(session, events)["PETR4"].avg_price == Decimal("3078.2") / 110
+    set_bonus_cost(session, USER, "petr4", date(2026, 1, 5), Decimal("7.82"), events)
+    assert bonus_costs(session, USER) == {("PETR4", date(2026, 1, 5)): Decimal("7.82")}
+    assert get_portfolio(session, USER, events)["PETR4"].avg_price == Decimal("3078.2") / 110
 
-    delete_bonus_cost(session, "PETR4", date(2026, 1, 6))  # nothing there: no error
-    delete_bonus_cost(session, "PETR4", date(2026, 1, 5))
-    assert bonus_costs(session) == {}
+    delete_bonus_cost(session, USER, "PETR4", date(2026, 1, 6))  # nothing there: no error
+    delete_bonus_cost(session, USER, "PETR4", date(2026, 1, 5))
+    assert bonus_costs(session, USER) == {}

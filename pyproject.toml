@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "investtrack"
-version = "0.4.0"
+version = "0.5.0"
 description = "Personal investment portfolio tracker for the Brazilian stock market (B3)"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,6 +13,8 @@ dependencies = [
     "uvicorn>=0.30",
     "requests>=2.32",
     "python-dotenv>=1.0",
+    "alembic>=1.13",
+    "argon2-cffi>=23.1",
 ]
 
 [project.optional-dependencies]
@@ -28,8 +30,11 @@ dev = [
     "ruff>=0.6",
 ]
 
-[tool.setuptools]
-packages = ["investtrack"]
+[tool.setuptools.packages.find]
+include = ["investtrack*"]  # also the migrations, which have no __init__.py
+
+[tool.setuptools.package-data]
+investtrack = ["migrations/script.py.mako"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -37,6 +42,9 @@ pythonpath = ["frontend"]  # frontend modules are imported like Streamlit does
 filterwarnings = [
     # Starlette's TestClient now suggests the "httpx2" package; httpx still works.
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    # A database connection left open is a bug: fail the test that leaks it.
+    "error::ResourceWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
 ]
 
 [tool.ruff]
@@ -49,7 +57,7 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.coverage.run]
 source = ["investtrack"]
-omit = ["investtrack/demo.py"]
+omit = ["investtrack/demo.py", "investtrack/migrations/*"]  # migrations: test_migrations.py
 
 [tool.ruff.lint.isort]
 known-first-party = ["investtrack", "api_client", "formatting"]
