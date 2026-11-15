@@ -123,6 +123,41 @@ def test_logout(session, auth):
     assert auth.user_for_token(session, token) is None
 
 
+def test_change_password_ends_the_other_sessions_only(session, auth):
+    user = auth.register(session, "ana@x.com", "long enough")
+    here, _ = auth.login(session, "ana@x.com", "long enough")
+    elsewhere, _ = auth.login(session, "ana@x.com", "long enough")
+
+    auth.change_password(session, user, here, "long enough", "a new passphrase")
+
+    assert auth.user_for_token(session, here) == user
+    assert auth.user_for_token(session, elsewhere) is None
+    with pytest.raises(InvalidCredentialsError):
+        auth.login(session, "ana@x.com", "long enough")
+    auth.login(session, "ana@x.com", "a new passphrase")
+
+
+def test_change_password_checks_the_current_one_and_the_new_length(session, auth):
+    user = auth.register(session, "ana@x.com", "long enough")
+    token, _ = auth.login(session, "ana@x.com", "long enough")
+    with pytest.raises(InvalidCredentialsError):
+        auth.change_password(session, user, token, "wrong one", "a new passphrase")
+    with pytest.raises(WeakPasswordError):
+        auth.change_password(session, user, token, "long enough", "short")
+    assert auth.user_for_token(session, token) == user  # nothing changed
+    auth.login(session, "ana@x.com", "long enough")
+
+
+def test_wrong_current_passwords_are_throttled(session, auth):
+    user = auth.register(session, "ana@x.com", "long enough")
+    token, _ = auth.login(session, "ana@x.com", "long enough", ip="1.2.3.4")
+    for _ in range(5):
+        with pytest.raises(InvalidCredentialsError):
+            auth.change_password(session, user, token, "wrong one", "a new one!", ip="1.2.3.4")
+    with pytest.raises(TooManyAttemptsError):
+        auth.change_password(session, user, token, "long enough", "a new one!", ip="1.2.3.4")
+
+
 def test_weak_old_hash_is_upgraded_on_login(session, clock):
     weak = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
     Auth(hasher=weak, clock=clock).register(session, "ana@x.com", "long enough")

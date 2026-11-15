@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description Change the password. Every other session of this account is ended.
+         */
+        post: operations["change_password_api_auth_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/register": {
         parameters: {
             query?: never;
@@ -821,6 +841,13 @@ export interface components {
             /** Net */
             net: string | null;
         };
+        /** PasswordChange */
+        PasswordChange: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
         /** PerformanceOut */
         PerformanceOut: {
             /**
@@ -869,6 +896,11 @@ export interface components {
              * @description Ibovespa return over the same period, %
              */
             ibovespa: string | null;
+            /**
+             * Net Worth
+             * @description Value at the close with fixed income net of taxes, as the portfolio shows it
+             */
+            net_worth: string;
             /**
              * Twr
              * @description Cumulative time-weighted return, %
@@ -1018,6 +1050,12 @@ export interface components {
         StockEventType: "SPLIT" | "REVERSE_SPLIT" | "BONUS";
         /** UserOut */
         UserOut: {
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the account was created
+             */
+            created_at: string;
             /** Email */
             email: string;
             /** Id */
@@ -1130,6 +1168,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserOut"];
+                };
+            };
+        };
+    };
+    change_password_api_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Wrong current password */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Weak new password */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too many failed attempts */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

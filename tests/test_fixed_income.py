@@ -11,6 +11,7 @@ from investtrack.fixed_income import (
     PartialRedemption,
     Product,
     RedemptionTooLargeError,
+    daily_net_values,
     daily_series,
     gross_values,
     iof_rate,
@@ -139,6 +140,17 @@ def test_daily_series_flows_in_and_out():
     assert values[DAYS[1]] == Decimal("1010") + Decimal("1000")
     assert values[DAYS[2]] == Decimal("1010")  # only the one still invested
     assert values[DAYS[3]] == Decimal("1020.1")
+
+
+def test_daily_net_values_take_the_taxes_out():
+    taxed, exempt = cdb(), cdb(product=Product.LCI, redeemed_on=DAYS[2])
+    gross, _ = daily_series([taxed, exempt], DAYS[:4], ONE_PERCENT)
+    net = daily_net_values([taxed, exempt], DAYS[:4], ONE_PERCENT)
+
+    assert set(net) == set(gross)  # the same days
+    assert net[DAYS[0]] == gross[DAYS[0]] == Decimal("2000")  # no gain yet, no tax
+    expected = taxes(taxed, DAYS[3], Decimal("1030.301")).net  # LCI already redeemed
+    assert net[DAYS[3]] == expected < gross[DAYS[3]]
 
 
 def test_twr_of_fixed_income_alone():

@@ -1,7 +1,9 @@
 import { useMutation } from '@tanstack/react-query'
 import { useId, useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { api, call } from '../api/client'
 import { markLoggedIn } from '../api/session'
+import { LogoMark } from '../components/Icons'
 
 type Tab = 'login' | 'register'
 
@@ -11,13 +13,18 @@ async function login(email: string, password: string): Promise<void> {
 }
 
 /** Entrar / Criar conta. The app swaps to the portfolio as soon as the login succeeds. */
-export function LoginPage({ notice }: { notice: string | null }) {
-  const [tab, setTab] = useState<Tab>('login')
+export function LoginPage({ notice, initialTab = 'login' }: { notice: string | null; initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab)
   const id = useId()
 
   return (
     <main className="narrow">
-      <h1>InvestTrack</h1>
+      <h1>
+        <Link to="/" className="brand-link" title="Voltar à página inicial">
+          <LogoMark />
+          InvestTrack
+        </Link>
+      </h1>
       {notice && <p className="alert warning">{notice}</p>}
       <div role="tablist" className="tabs">
         {(['login', 'register'] as const).map((t) => (

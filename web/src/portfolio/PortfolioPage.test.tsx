@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react'
 import { expect, test } from 'vitest'
 import { fakeApi } from '../test/fakeApi'
 import { renderWithApp } from '../test/render'
-import { portfolio, position } from '../test/samples'
+import { performance, portfolio, position } from '../test/samples'
 import { PortfolioPage } from './PortfolioPage'
 
 function metric(label: string) {
@@ -39,7 +39,7 @@ test('lists open positions only', async () => {
     'R$ 33,00',
     'R$ 3.000,00',
     'R$ 3.300,00',
-    'R$ 300,00 (+10,00%)',
+    'R$ 300,00 +10,00%',
     'R$ 45,10',
   ])
   expect(within(table).queryByRole('row', { name: /VALE3/ })).not.toBeInTheDocument()
@@ -82,4 +82,17 @@ test('an empty portfolio says how to start', async () => {
   fakeApi({ 'GET /portfolio': { body: portfolio([]) } })
   renderWithApp(<PortfolioPage />)
   expect(await screen.findByText(/Nenhuma operação ainda/)).toBeInTheDocument()
+})
+
+test('charts the net worth over time, with the exact change in the period', async () => {
+  fakeApi({
+    'GET /portfolio': { body: portfolio([position()]) },
+    'GET /performance': { body: performance() },
+  })
+  renderWithApp(<PortfolioPage />)
+
+  const chart = await screen.findByRole('region', { name: 'Evolução do patrimônio' })
+  // From net_worth (fixed income after taxes, like the Patrimônio card), not the gross value.
+  expect(await within(chart).findByText('+R$ 5.390,15')).toBeInTheDocument()
+  expect(chart).toHaveTextContent('de 05/01/2026 a 13/11/2026')
 })

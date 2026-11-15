@@ -14,6 +14,11 @@ export const keys = {
   operations: ['operations'],
 } as const
 
+/** The logged-in account: e-mail and since when. */
+export function useMe() {
+  return useQuery({ queryKey: keys.me, queryFn: () => call(api.GET('/api/auth/me')) })
+}
+
 export function usePortfolio() {
   return useQuery({ queryKey: keys.portfolio, queryFn: () => call(api.GET('/api/portfolio')) })
 }

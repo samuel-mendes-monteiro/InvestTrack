@@ -123,8 +123,8 @@ export function performance(overrides: Partial<Schemas['PerformanceOut']> = {}):
     pct_of_cdi: '404.11',
     syncing: false,
     points: [
-      { date: '2026-01-05', twr: '0', cdi: '0', ibovespa: '0', value: '3000.00' },
-      { date: '2026-11-13', twr: '48.8213', cdi: '12.0811', ibovespa: null, value: '8405.95' },
+      { date: '2026-01-05', twr: '0', cdi: '0', ibovespa: '0', value: '3000.00', net_worth: '3000.00' },
+      { date: '2026-11-13', twr: '48.8213', cdi: '12.0811', ibovespa: null, value: '8405.95', net_worth: '8390.15' },
     ],
     ...overrides,
   }

@@ -1,11 +1,13 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router'
 import { api, call } from './api/client'
-import { keys } from './api/queries'
+import { useMe } from './api/queries'
 import { ApiError } from './api/errors'
 import { markLoggedIn, markLoggedOut, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
+import { BankIcon, ChartIcon, CoinsIcon, ListIcon, LogoMark, PlusIcon, WalletIcon } from './components/Icons'
+import { LandingPage } from './landing/LandingPage'
 import { OperationForm } from './operations/OperationForm'
 
 // Each page is its own chunk, downloaded the first time it's opened: the login
@@ -15,13 +17,29 @@ const PortfolioPage = lazy(() => import('./portfolio/PortfolioPage').then((m) =>
 const PerformancePage = lazy(() => import('./performance/PerformancePage').then((m) => ({ default: m.PerformancePage })))
 const OperationsPage = lazy(() => import('./operations/OperationsPage').then((m) => ({ default: m.OperationsPage })))
 const IncomePage = lazy(() => import('./income/IncomePage').then((m) => ({ default: m.IncomePage })))
+const ProfilePage = lazy(() => import('./profile/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 const FixedIncomePage = lazy(() => import('./fixed-income/FixedIncomePage').then((m) => ({ default: m.FixedIncomePage })))
 
 export default function App() {
   const { status, notice, generation } = useSession()
   if (status === 'checking') return <SessionCheck />
   // key: each login mounts a fresh shell, so nothing from the last session survives.
-  return status === 'in' ? <Shell key={generation} /> : <LoginPage notice={notice} />
+  if (status === 'in') return <Shell key={generation} />
+  // An expired session goes straight back to the login, with the notice.
+  if (notice) return <LoginPage notice={notice} />
+  return <Public />
+}
+
+/** Before the login: the product page, and the login and sign-up forms. */
+function Public() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/entrar" element={<LoginPage key="login" notice={null} />} />
+      <Route path="/criar-conta" element={<LoginPage key="register" notice={null} initialTab="register" />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
 }
 
 /**
@@ -65,17 +83,17 @@ function SessionCheck() {
 
 // Each screen has its own URL, so reload, back/forward and bookmarks work.
 const PAGES = [
-  { path: '/', label: 'Carteira', element: <PortfolioPage /> },
-  { path: '/rentabilidade', label: 'Rentabilidade', element: <PerformancePage /> },
-  { path: '/operacoes', label: 'Operações', element: <OperationsPage /> },
-  { path: '/proventos', label: 'Proventos', element: <IncomePage /> },
-  { path: '/renda-fixa', label: 'Renda fixa', element: <FixedIncomePage /> },
+  { path: '/', label: 'Carteira', icon: <WalletIcon />, element: <PortfolioPage /> },
+  { path: '/rentabilidade', label: 'Rentabilidade', icon: <ChartIcon />, element: <PerformancePage /> },
+  { path: '/operacoes', label: 'Operações', icon: <ListIcon />, element: <OperationsPage /> },
+  { path: '/proventos', label: 'Proventos', icon: <CoinsIcon />, element: <IncomePage /> },
+  { path: '/renda-fixa', label: 'Renda fixa', icon: <BankIcon />, element: <FixedIncomePage /> },
 ]
 
 /** Everything behind the login. */
 function Shell() {
   const queryClient = useQueryClient()
-  const me = useQuery({ queryKey: keys.me, queryFn: () => call(api.GET('/api/auth/me')) })
+  const me = useMe()
   const [leaving, setLeaving] = useState(false)
   const [creating, setCreating] = useState(false)
 
@@ -97,19 +115,32 @@ function Shell() {
   return (
     <>
       <header className="topbar">
-        <strong className="brand">InvestTrack</strong>
-        <nav>
+        <strong className="brand">
+          <LogoMark />
+          InvestTrack
+        </strong>
+        {/* On phones this same nav becomes a tab bar fixed to the bottom of the screen. */}
+        <nav className="app-nav" aria-label="Áreas">
           {PAGES.map((p) => (
             <NavLink key={p.path} to={p.path} end>
-              {p.label}
+              {p.icon}
+              <span>{p.label}</span>
             </NavLink>
           ))}
         </nav>
         <span className="spacer" />
-        <button className="primary" onClick={() => setCreating(true)}>
-          Nova operação
+        <button className="primary new-operation" onClick={() => setCreating(true)}>
+          <PlusIcon />
+          <span>Nova operação</span>
         </button>
-        {me.data && <span className="muted email">{me.data.email}</span>}
+        {me.data && (
+          <NavLink to="/perfil" className="profile-button" title="Perfil" aria-label={`Perfil de ${me.data.email}`}>
+            <span className="avatar" aria-hidden="true">
+              {me.data.email[0].toUpperCase()}
+            </span>
+            <span className="email">{me.data.email}</span>
+          </NavLink>
+        )}
         <button onClick={logout} disabled={leaving} title={me.data ? `Sair de ${me.data.email}` : undefined}>
           Sair
         </button>
@@ -120,6 +151,7 @@ function Shell() {
             {PAGES.map((p) => (
               <Route key={p.path} path={p.path} element={p.element} />
             ))}
+            <Route path="/perfil" element={<ProfilePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

@@ -80,6 +80,8 @@ export function domainMessage(d: ErrorDetail): string {
     }
     case 'EMAIL_TAKEN':
       return 'Já existe uma conta com esse e-mail.'
+    case 'WRONG_PASSWORD':
+      return 'A senha atual está incorreta.'
     case 'WEAK_PASSWORD':
       return 'A senha precisa ter pelo menos 8 caracteres.'
     case 'INVALID_EMAIL':

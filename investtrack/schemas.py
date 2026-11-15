@@ -110,6 +110,12 @@ class Credentials(BaseModel):
 class UserOut(BaseModel):
     id: int
     email: str
+    created_at: datetime = Field(description="When the account was created")
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(max_length=256)
+    new_password: str = Field(max_length=256)  # the length rules live in auth.py
 
 
 class SessionOut(BaseModel):
@@ -236,6 +242,9 @@ class FixedIncomeOut(BaseModel):
 class PerformancePoint(BaseModel):
     date: date
     value: Money = Field(description="Portfolio value at the close")
+    net_worth: Money = Field(
+        description="Value at the close with fixed income net of taxes, as the portfolio shows it"
+    )
     twr: Money = Field(description="Cumulative time-weighted return, %")
     cdi: Money | None = Field(description="CDI accumulated over the same period, %")
     ibovespa: Money | None = Field(description="Ibovespa return over the same period, %")

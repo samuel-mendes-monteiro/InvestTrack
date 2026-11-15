@@ -2,6 +2,7 @@ import { usePortfolio } from '../api/queries'
 import { Metric } from '../components/Metric'
 import { brl, isZero, localTime, pct, quantity, sumDecimals, toneOf } from '../format'
 import { Distribution, type Slice } from './Distribution'
+import { NetWorthChart } from './NetWorthChart'
 
 export function PortfolioPage() {
   const portfolio = usePortfolio()
@@ -25,36 +26,48 @@ export function PortfolioPage() {
   if (hasFixedIncome) slices.push({ name: 'Renda fixa', value: totals.fixed_income })
 
   return (
-    <>
-      <div className="metrics">
-        <Metric
-          label="Patrimônio"
-          value={brl(netWorth)}
-          help={`Ações, FIIs e ETFs, mais ${brl(totals.fixed_income)} em renda fixa (valor líquido).`}
-        />
-        <Metric
-          label="Investido em ações"
-          value={brl(totals.invested)}
-          help="Custo das posições abertas de ações, FIIs e ETFs, sem a renda fixa."
-        />
-        <Metric
-          label="Resultado em ações"
-          value={brl(totals.result)}
-          detail={totals.result_pct != null && pct(totals.result_pct)}
-          tone={toneOf(totals.result)}
-          help="Valor atual menos o custo das posições abertas, sem a renda fixa."
-        />
-        <Metric
-          label="Lucro realizado"
-          value={brl(totals.realized_profit)}
-          help="Lucro ou prejuízo de vendas já feitas, inclusive de posições encerradas."
-        />
-        <Metric
-          label="Proventos"
-          value={brl(totals.income)}
-          detail={!isZero(totals.income_pending) && `${brl(totals.income_pending)} a receber`}
-          help="Dividendos, JCP e rendimentos já recebidos, descontado o IR retido."
-        />
+    <div className="portfolio">
+      <div className="portfolio-top">
+        <div className="portfolio-summary">
+          <Metric
+            hero
+            label="Patrimônio"
+            value={brl(netWorth)}
+            detail={`${brl(totals.current_value)} em ações, FIIs e ETFs · ${brl(totals.fixed_income)} em renda fixa`}
+            help="Renda fixa pelo valor líquido."
+          />
+          <div className="metrics">
+            <Metric
+              label="Investido em ações"
+              value={brl(totals.invested)}
+              help="Custo das posições abertas de ações, FIIs e ETFs, sem a renda fixa."
+            />
+            <Metric
+              label="Resultado em ações"
+              value={brl(totals.result)}
+              detail={totals.result_pct != null && pct(totals.result_pct)}
+              tone={toneOf(totals.result)}
+              help="Valor atual menos o custo das posições abertas, sem a renda fixa."
+            />
+            <Metric
+              label="Lucro realizado"
+              value={brl(totals.realized_profit)}
+              help="Lucro ou prejuízo de vendas já feitas, inclusive de posições encerradas."
+            />
+            <Metric
+              label="Proventos"
+              value={brl(totals.income)}
+              detail={!isZero(totals.income_pending) && `${brl(totals.income_pending)} a receber`}
+              help="Dividendos, JCP e rendimentos já recebidos, descontado o IR retido."
+            />
+          </div>
+          <NetWorthChart />
+        </div>
+
+        <section className="card" aria-labelledby="distribution-title">
+          <h2 id="distribution-title">Distribuição</h2>
+          <Distribution slices={slices} />
+        </section>
       </div>
 
       {missing.length > 0 && (
@@ -67,42 +80,52 @@ export function PortfolioPage() {
         </p>
       )}
 
-      <h2>Posições</h2>
-      <div className="table-wrap">
-        <table className="data" aria-label="Posições">
-          <thead>
-            <tr>
-              <th>Ticker</th>
-              <th className="num">Qtd</th>
-              <th className="num">Preço médio</th>
-              <th className="num">Cotação</th>
-              <th className="num">Investido</th>
-              <th className="num">Valor atual</th>
-              <th className="num">Resultado</th>
-              <th className="num">Proventos</th>
-            </tr>
-          </thead>
-          <tbody>
-            {open.map((p) => (
-              <tr key={p.ticker}>
-                <th scope="row">{p.ticker}</th>
-                <td className="num">{quantity(p.quantity)}</td>
-                <td className="num">{brl(p.avg_price)}</td>
-                <td className="num">{brl(p.current_price)}</td>
-                <td className="num">{brl(p.invested)}</td>
-                <td className="num">{brl(p.current_value)}</td>
-                <td className={`num ${toneOf(p.result) ?? ''}`}>
-                  {p.result == null ? '—' : `${brl(p.result)} (${pct(p.result_pct)})`}
-                </td>
-                <td className="num">{brl(p.income)}</td>
+      <section className="card" aria-labelledby="positions-title">
+        <div className="card-head">
+          <h2 id="positions-title">Posições</h2>
+          <span className="muted">{open.length === 1 ? '1 ativo' : `${open.length} ativos`}</span>
+        </div>
+        {/* data-label names each value when a row turns into a card on phones. */}
+        <div className="table-wrap">
+          <table className="data positions" aria-label="Posições">
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th className="num">Qtd</th>
+                <th className="num">Preço médio</th>
+                <th className="num">Cotação</th>
+                <th className="num">Investido</th>
+                <th className="num">Valor atual</th>
+                <th className="num">Resultado</th>
+                <th className="num">Proventos</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <h2>Distribuição</h2>
-      <Distribution slices={slices} />
-    </>
+            </thead>
+            <tbody>
+              {open.map((p) => (
+                <tr key={p.ticker}>
+                  <th scope="row" className="ticker">{p.ticker}</th>
+                  <td className="num qty" data-label="Qtd">{quantity(p.quantity)}</td>
+                  <td className="num avg" data-label="Preço médio">{brl(p.avg_price)}</td>
+                  <td className="num price" data-label="Cotação">{brl(p.current_price)}</td>
+                  <td className="num invested" data-label="Investido">{brl(p.invested)}</td>
+                  <td className="num value">{brl(p.current_value)}</td>
+                  <td className="num result">
+                    {p.result == null ? (
+                      '—'
+                    ) : (
+                      <>
+                        <span className={toneOf(p.result)}>{brl(p.result)}</span>{' '}
+                        <span className={`chip ${toneOf(p.result) ?? ''}`}>{pct(p.result_pct)}</span>
+                      </>
+                    )}
+                  </td>
+                  <td className="num income" data-label="Proventos">{brl(p.income)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   )
 }

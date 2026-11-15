@@ -615,6 +615,7 @@ def test_performance_against_benchmarks():
     assert body["points"][0] == {
         "date": "2026-03-02",
         "value": "1000.00",
+        "net_worth": "1000.00",  # no fixed income: no tax to take out
         "twr": "0.00",
         "cdi": "0.00",
         "ibovespa": "10.00",
@@ -657,6 +658,7 @@ def test_performance_of_a_period_starts_at_zero():
     assert month["points"][0] == {
         "date": "2026-02-02",
         "value": "1200.00",
+        "net_worth": "1200.00",
         "twr": "0.00",
         "cdi": "0.00",
         "ibovespa": "0.00",
@@ -883,6 +885,17 @@ def test_lci_at_100_percent_of_cdi_earns_exactly_the_cdi(fi_client):
     assert body["pct_of_cdi"] == "100.00"
 
 
+def test_net_worth_over_time_ends_where_the_portfolio_is(fi_client):
+    # A CDB two days old: IOF and income tax take most of the gain.
+    fi_client.post("/fixed-income", json=fixed(product="CDB"))
+    last = fi_client.get("/performance").json()["points"][-1]
+    assert last["value"] == "1020.10"  # gross: what the return is measured on
+    # Net: the same number the Carteira shows as fixed income, so the chart
+    # ends exactly at the Patrimônio card.
+    assert last["net_worth"] == fi_client.get("/portfolio").json()["totals"]["fixed_income"]
+    assert last["net_worth"] < last["value"]
+
+
 # --- accounts and isolation --------------------------------------------------
 
 PUBLIC = {("GET", "/health"), ("POST", "/auth/register"), ("POST", "/auth/login")}
@@ -1018,6 +1031,31 @@ def test_me_and_logout(client):
     assert f'{SESSION_COOKIE}=""' in r.headers["set-cookie"]  # the browser forgets it
     client.cookies.set(SESSION_COOKIE, token, path="/api")
     assert client.get("/auth/me").status_code == 401  # and the server too: a copy is useless
+
+
+def test_me_says_when_the_account_was_created(client):
+    created = client.get("/auth/me").json()["created_at"]
+    assert created.endswith(("Z", "+00:00"))  # UTC, even from SQLite
+
+
+def test_change_password(client):
+    wrong = client.post(
+        "/auth/password", json={"current_password": "wrong one", "new_password": "a new one!"}
+    )
+    # 403, not 401: the session is fine, and the app must not log out.
+    assert (wrong.status_code, wrong.json()["detail"]["code"]) == (403, "WRONG_PASSWORD")
+    weak = client.post(
+        "/auth/password", json={"current_password": "long enough", "new_password": "short"}
+    )
+    assert (weak.status_code, weak.json()["detail"]["code"]) == (422, "WEAK_PASSWORD")
+
+    ok = client.post(
+        "/auth/password", json={"current_password": "long enough", "new_password": "a new one!"}
+    )
+    assert ok.status_code == 204
+    assert client.get("/auth/me").status_code == 200  # this session goes on
+    login = {"email": "ana@example.com", "password": "a new one!"}
+    assert client.post("/auth/login", json=login).status_code == 200
 
 
 # --- B3 statement import -----------------------------------------------------

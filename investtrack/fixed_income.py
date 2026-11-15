@@ -366,3 +366,29 @@ def daily_series(
             else:
                 values[day] += value
     return dict(values), dict(flows)
+
+
+def daily_net_values(
+    investments: list[FixedIncome],
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None = None,
+) -> dict[date, Decimal]:
+    """Net value (after IOF and income tax) of all investments at each close.
+
+    The same days as daily_series' values, but what the money is worth if
+    redeemed that day, as the portfolio's net worth shows it. The return
+    (TWR) keeps using the gross values: the tax is only paid on redemption.
+    """
+    values: dict[date, Decimal] = defaultdict(lambda: ZERO)
+    last_known = max(business_days, default=None)
+    for investment in investments:
+        trajectory = _trajectory(investment, business_days, cdi, ipca)
+        if not trajectory:
+            continue
+        ended = last_known is not None and investment.end <= last_known
+        last = max(trajectory)
+        for day, v in trajectory.items():
+            if not (ended and day == last):  # gone that day, as in daily_series
+                values[day] += taxes(investment, day, v.gross, v.share).net
+    return dict(values)

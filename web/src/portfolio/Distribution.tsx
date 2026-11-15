@@ -31,19 +31,30 @@ export function Distribution({ slices }: { slices: Slice[] }) {
 
   return (
     <div className="distribution">
-      <PieChart width={220} height={220} aria-hidden="true">
-        <Pie data={data} dataKey="size" nameKey="name" innerRadius={62} outerRadius={104} stroke="var(--bg)" strokeWidth={2} isAnimationActive={false}>
-          {data.map((d) => (
-            <Cell key={d.name} fill={d.color} />
-          ))}
-        </Pie>
-        <Tooltip formatter={(_value, _name, item) => [item.payload.amount, item.payload.name]} />
-      </PieChart>
+      <div className="donut">
+        <PieChart width={200} height={200} aria-hidden="true">
+          <Pie data={data} dataKey="size" nameKey="name" innerRadius={64} outerRadius={96} paddingAngle={1} stroke="var(--surface)" strokeWidth={2} isAnimationActive={false}>
+            {data.map((d) => (
+              <Cell key={d.name} fill={d.color} />
+            ))}
+          </Pie>
+          <Tooltip
+            formatter={(_value, _name, item) => [item.payload.amount, item.payload.name]}
+            contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
+            itemStyle={{ color: 'var(--text)' }}
+          />
+        </PieChart>
+        {/* Exact sum of the API strings, not of the Numbers drawn above. */}
+        <div className="donut-center" aria-hidden="true">
+          <span className="muted">Total</span>
+          <strong>{brl(sumDecimals(slices.map((s) => s.value)))}</strong>
+        </div>
+      </div>
       <table className="legend" aria-label="Distribuição">
         <tbody>
           {data.map((d) => (
             <tr key={d.name}>
-              <td>
+              <td className="legend-name">
                 <span className="swatch" style={{ background: d.color }} />
                 {d.name}
               </td>

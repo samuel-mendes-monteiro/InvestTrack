@@ -996,6 +996,26 @@
         "title": "PartialRedemptionOut",
         "type": "object"
       },
+      "PasswordChange": {
+        "properties": {
+          "current_password": {
+            "maxLength": 256,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 256,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "PasswordChange",
+        "type": "object"
+      },
       "PerformanceOut": {
         "properties": {
           "as_of": {
@@ -1126,6 +1146,11 @@
             "description": "Ibovespa return over the same period, %",
             "title": "Ibovespa"
           },
+          "net_worth": {
+            "description": "Value at the close with fixed income net of taxes, as the portfolio shows it",
+            "title": "Net Worth",
+            "type": "string"
+          },
           "twr": {
             "description": "Cumulative time-weighted return, %",
             "title": "Twr",
@@ -1140,6 +1165,7 @@
         "required": [
           "date",
           "value",
+          "net_worth",
           "twr",
           "cdi",
           "ibovespa"
@@ -1492,6 +1518,12 @@
       },
       "UserOut": {
         "properties": {
+          "created_at": {
+            "description": "When the account was created",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
           "email": {
             "title": "Email",
             "type": "string"
@@ -1503,7 +1535,8 @@
         },
         "required": [
           "id",
-          "email"
+          "email",
+          "created_at"
         ],
         "title": "UserOut",
         "type": "object"
@@ -1648,6 +1681,61 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/password": {
+      "post": {
+        "description": "Change the password. Every other session of this account is ended.",
+        "operationId": "change_password_api_auth_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Wrong current password"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Weak new password"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too many failed attempts"
+          }
+        },
+        "summary": "Change Password",
         "tags": [
           "auth"
         ]

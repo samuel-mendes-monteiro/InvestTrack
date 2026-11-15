@@ -40,6 +40,7 @@ from investtrack.auth import (
     InvalidEmailError,
     TooManyAttemptsError,
     WeakPasswordError,
+    as_utc,
 )
 from investtrack.b3 import B3Client
 from investtrack.b3_statement import MAX_FILE_SIZE, StatementError, read_statement
@@ -50,6 +51,7 @@ from investtrack.fixed_income import (
     FixedIncome,
     PartialRedemption,
     RedemptionTooLargeError,
+    daily_net_values,
     daily_series,
     is_estimated,
     partial_valuations,
@@ -88,6 +90,7 @@ from investtrack.schemas import (
     OperationOut,
     PartialRedemptionIn,
     PartialRedemptionOut,
+    PasswordChange,
     PerformanceOut,
     PerformancePoint,
     PortfolioOut,
@@ -127,6 +130,11 @@ def get_market_data(request: Request) -> MarketDataSource:
 # what a CSRF attack needs; the app and the API share an origin, so it never
 # needs to cross sites.
 SESSION_COOKIE = "investtrack_session"
+
+
+def user_out(user: User) -> UserOut:
+    # SQLite drops the timezone; the API always answers in UTC.
+    return UserOut(id=user.id, email=user.email, created_at=as_utc(user.created_at))
 
 
 def session_token(request: Request) -> str | None:
@@ -417,7 +425,7 @@ def create_app(
             raise api_error(422, "INVALID_EMAIL", e) from e
         except WeakPasswordError as e:
             raise api_error(422, "WEAK_PASSWORD", e) from e
-        return UserOut(id=user.id, email=user.email)
+        return user_out(user)
 
     @api.post(
         "/auth/login",
@@ -464,7 +472,42 @@ def create_app(
 
     @api.get("/auth/me", tags=["auth"])
     def me(user: UserDep) -> UserOut:
-        return UserOut(id=user.id, email=user.email)
+        return user_out(user)
+
+    @api.post(
+        "/auth/password",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["auth"],
+        responses={
+            # 403, not 401: a 401 means "no session", and the app would log out.
+            403: {"model": ErrorOut, "description": "Wrong current password"},
+            422: {"model": ErrorOut, "description": "Weak new password"},
+            429: {"model": ErrorOut, "description": "Too many failed attempts"},
+        },
+    )
+    def change_password(
+        payload: PasswordChange, session: SessionDep, user: UserDep, request: Request
+    ) -> None:
+        """Change the password. Every other session of this account is ended."""
+        ip = request.client.host if request.client else ""
+        try:
+            request.app.state.auth.change_password(
+                session,
+                user,
+                session_token(request),
+                payload.current_password,
+                payload.new_password,
+                ip,
+            )
+        except InvalidCredentialsError as e:
+            raise api_error(403, "WRONG_PASSWORD", e) from e
+        except WeakPasswordError as e:
+            raise api_error(422, "WEAK_PASSWORD", e) from e
+        except TooManyAttemptsError as e:
+            error = api_error(429, "TOO_MANY_ATTEMPTS", e)
+            error.detail["retry_after"] = e.retry_after
+            error.headers = {"Retry-After": str(e.retry_after)}
+            raise error from e
 
     @api.post(
         "/operations",
@@ -1038,7 +1081,9 @@ def create_app(
             if start <= d <= last_day
         )
         incomes = [i for i in received(all_incomes(session, user.id, events)) if i.date <= last_day]
-        fi_values, fi_flows = daily_series(investments, *business_days(market, start))
+        fi_days = business_days(market, start)
+        fi_values, fi_flows = daily_series(investments, *fi_days)
+        fi_net = daily_net_values(investments, *fi_days)
         history = portfolio_history(
             operations, days, closes, stock, incomes, other_values=fi_values, other_flows=fi_flows
         )
@@ -1080,6 +1125,10 @@ def create_app(
             PerformancePoint(
                 date=h.date,
                 value=h.value,
+                # The same day with fixed income net of taxes instead of gross.
+                net_worth=h.value
+                - fi_values.get(h.date, Decimal("0"))
+                + fi_net.get(h.date, Decimal("0")),
                 twr=twr[h.date] * 100,
                 cdi=pct(cdi_acc.get(h.date)),
                 ibovespa=pct(ibov_ret.get(h.date)),

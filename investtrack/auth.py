@@ -59,7 +59,7 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _as_utc(value: datetime) -> datetime:
+def as_utc(value: datetime) -> datetime:
     """SQLite drops the timezone when storing datetimes; put UTC back."""
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
@@ -236,11 +236,42 @@ class Auth:
         record = session.get(AuthSession, hash_token(token))
         if record is None:
             return None
-        if _as_utc(record.expires_at) <= self._clock():
+        if as_utc(record.expires_at) <= self._clock():
             session.delete(record)
             session.commit()
             return None
         return session.get(User, record.user_id)
+
+    def change_password(
+        self, session: Session, user: User, token: str, current: str, new: str, ip: str = ""
+    ) -> None:
+        """Replace the password, after checking the current one.
+
+        Asking for the current password means a session left open on someone
+        else's computer isn't enough to take the account. Every other session
+        is then ended (the one making the change stays): if the password
+        leaked, whoever used it is logged out. Wrong guesses count in the same
+        throttle as logins, so this isn't a way around it.
+        """
+        if not MIN_PASSWORD <= len(new) <= MAX_PASSWORD:
+            raise WeakPasswordError(
+                f"password must have between {MIN_PASSWORD} and {MAX_PASSWORD} characters"
+            )
+        self.throttle.check(user.email, ip)
+        try:
+            self._hasher.verify(user.password_hash, current)
+        except (VerificationError, InvalidHashError):
+            self.throttle.failed(user.email, ip)
+            raise InvalidCredentialsError("wrong current password") from None
+        self.throttle.succeeded(user.email, ip)
+
+        user.password_hash = self._hasher.hash(new)
+        session.execute(
+            delete(AuthSession).where(
+                AuthSession.user_id == user.id, AuthSession.token_hash != hash_token(token)
+            )
+        )
+        session.commit()
 
     def logout(self, session: Session, token: str) -> None:
         session.execute(delete(AuthSession).where(AuthSession.token_hash == hash_token(token)))
