@@ -2,6 +2,8 @@ import { useMutation } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { api, call } from '../api/client'
 import { useMe } from '../api/queries'
+import { markLoggedOut } from '../api/session'
+import { Modal } from '../components/Modal'
 
 /** The account: who is logged in, and changing the password. */
 export function ProfilePage() {
@@ -27,6 +29,7 @@ export function ProfilePage() {
         </div>
       </section>
       <PasswordForm />
+      <DeleteAccount />
     </div>
   )
 }
@@ -107,5 +110,75 @@ function PasswordForm() {
         </div>
       </form>
     </section>
+  )
+}
+
+/** The way out: everything goes, after the password. There is no undo. */
+function DeleteAccount() {
+  const [confirming, setConfirming] = useState(false)
+
+  return (
+    <section className="card danger-zone" aria-labelledby="delete-title">
+      <h2 id="delete-title">Excluir conta</h2>
+      <p className="muted">
+        Apaga a conta e tudo o que está nela: operações, proventos registrados, renda fixa e custos de bonificação. Não
+        dá para desfazer.
+      </p>
+      <div className="actions">
+        <button className="danger" onClick={() => setConfirming(true)}>
+          Excluir conta…
+        </button>
+      </div>
+      {confirming && <DeleteAccountDialog onClose={() => setConfirming(false)} />}
+    </section>
+  )
+}
+
+function DeleteAccountDialog({ onClose }: { onClose: () => void }) {
+  const [password, setPassword] = useState('')
+  const mutation = useMutation({
+    mutationFn: () => call(api.POST('/api/auth/delete-account', { body: { password } })),
+    // The session is gone with the account: back to the product page.
+    onSuccess: () => markLoggedOut(),
+    onSettled: () => setPassword(''),
+  })
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    mutation.mutate()
+  }
+
+  return (
+    <Modal title="Excluir a conta?" onClose={onClose}>
+      <form onSubmit={submit} className="stack">
+        <p className="alert error">
+          Todas as suas operações, proventos registrados, aplicações de renda fixa e custos de bonificação serão apagados
+          para sempre.
+        </p>
+        <label>
+          Digite sua senha para confirmar
+          <input
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        {mutation.isError && (
+          <p className="alert error" role="alert">
+            {mutation.error.message}
+          </p>
+        )}
+        <div className="actions">
+          <button type="button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="submit" className="danger-solid" disabled={mutation.isPending}>
+            {mutation.isPending ? 'Excluindo…' : 'Excluir conta definitivamente'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }

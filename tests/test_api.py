@@ -931,6 +931,33 @@ def test_partial_redemption_on_a_day_without_value(fi_client):
         assert r.json()["detail"]["code"] == "VALUE_NOT_KNOWN"
 
 
+def test_edit_fixed_income(fi_client):
+    created = fi_client.post("/fixed-income", json=fixed(product="CDB")).json()
+    url = f"/fixed-income/{created['id']}"
+    edited = fi_client.put(url, json=fixed(product="CDB", name="CDB Banco Y", rate="110"))
+    assert edited.status_code == 200
+    body = edited.json()
+    assert (body["name"], body["rate"], body["gross"]) == ("CDB Banco Y", "110", "1022.12")
+
+    bad = fi_client.put(url, json=fixed(product="CDB", maturity="2026-03-01"))
+    assert (bad.status_code, bad.json()["detail"]["code"]) == (422, "INVALID_FIXED_INCOME")
+    assert fi_client.put("/fixed-income/99", json=fixed()).status_code == 404
+
+
+def test_edit_keeps_withdrawals_and_refuses_one_that_no_longer_fits(fi_client):
+    created = fi_client.post("/fixed-income", json=fixed()).json()
+    url = f"/fixed-income/{created['id']}"
+    fi_client.post(f"{url}/partial-redemptions", json={"date": "2026-03-03", "gross": "600"})
+
+    # 500 applied can't have had 600 withdrawn: nothing is saved.
+    smaller = fi_client.put(url, json=fixed(amount="500"))
+    assert (smaller.status_code, smaller.json()["detail"]["code"]) == (422, "REDEMPTION_TOO_LARGE")
+    assert fi_client.get("/fixed-income").json()[0]["amount"] == "1000.00"
+
+    bigger = fi_client.put(url, json=fixed(amount="2000")).json()
+    assert [p["gross"] for p in bigger["partial_redemptions"]] == ["600.00"]
+
+
 def test_deleting_an_investment_deletes_its_withdrawals(fi_client):
     created = fi_client.post("/fixed-income", json=fixed()).json()
     url = f"/fixed-income/{created['id']}/partial-redemptions"
@@ -1122,6 +1149,30 @@ def test_me_and_logout(client):
     assert f'{SESSION_COOKIE}=""' in r.headers["set-cookie"]  # the browser forgets it
     client.cookies.set(SESSION_COOKIE, token, path="/api")
     assert client.get("/auth/me").status_code == 401  # and the server too: a copy is useless
+
+
+def test_delete_account_takes_its_data_with_it(fi_client):
+    fi_client.post("/operations", json=op(qty="100", price="30", day="2026-03-02"))
+    created = fi_client.post("/fixed-income", json=fixed()).json()
+    fi_client.post(
+        f"/fixed-income/{created['id']}/partial-redemptions",
+        json={"date": "2026-03-03", "gross": "100"},
+    )
+
+    wrong = fi_client.post("/auth/delete-account", json={"password": "wrong one"})
+    # 403, not 401: the session is fine, and the app must not log out.
+    assert (wrong.status_code, wrong.json()["detail"]["code"]) == (403, "WRONG_PASSWORD")
+    assert fi_client.get("/auth/me").status_code == 200
+
+    gone = fi_client.post("/auth/delete-account", json={"password": "long enough"})
+    assert gone.status_code == 204
+    assert f'{SESSION_COOKIE}=""' in gone.headers["set-cookie"]
+    assert fi_client.get("/auth/me").status_code == 401
+
+    # The same e-mail can sign up again, and starts empty.
+    log_in(fi_client)
+    assert fi_client.get("/operations").json() == []
+    assert fi_client.get("/fixed-income").json() == []
 
 
 def test_me_says_when_the_account_was_created(client):

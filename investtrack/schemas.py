@@ -113,6 +113,10 @@ class UserOut(BaseModel):
     created_at: datetime = Field(description="When the account was created")
 
 
+class AccountDeletion(BaseModel):
+    password: str = Field(max_length=256)
+
+
 class PasswordChange(BaseModel):
     current_password: str = Field(max_length=256)
     new_password: str = Field(max_length=256)  # the length rules live in auth.py

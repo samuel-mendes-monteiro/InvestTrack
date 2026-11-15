@@ -79,6 +79,7 @@ from investtrack.performance import (
 from investtrack.portfolio import InsufficientPositionError, Operation, value_position
 from investtrack.prices import CachedPriceProvider, PriceProvider
 from investtrack.schemas import (
+    AccountDeletion,
     BonusCostIn,
     Credentials,
     ErrorOut,
@@ -481,6 +482,36 @@ def create_app(
     @api.get("/auth/me", tags=["auth"])
     def me(user: UserDep) -> UserOut:
         return user_out(user)
+
+    @api.post(
+        "/auth/delete-account",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["auth"],
+        responses={
+            # 403, not 401: a 401 means "no session", and the app would log out.
+            403: {"model": ErrorOut, "description": "Wrong password"},
+            429: {"model": ErrorOut, "description": "Too many failed attempts"},
+        },
+    )
+    def delete_account(
+        payload: AccountDeletion,
+        session: SessionDep,
+        user: UserDep,
+        request: Request,
+        response: Response,
+    ) -> None:
+        """Delete the account and all of its data. There is no undo."""
+        ip = request.client.host if request.client else ""
+        try:
+            request.app.state.auth.delete_account(session, user, payload.password, ip)
+        except InvalidCredentialsError as e:
+            raise api_error(403, "WRONG_PASSWORD", e) from e
+        except TooManyAttemptsError as e:
+            error = api_error(429, "TOO_MANY_ATTEMPTS", e)
+            error.detail["retry_after"] = e.retry_after
+            error.headers = {"Retry-After": str(e.retry_after)}
+            raise error from e
+        response.delete_cookie(SESSION_COOKIE, path="/api", httponly=True, samesite="strict")
 
     @api.post(
         "/auth/password",
@@ -894,6 +925,46 @@ def create_app(
             background.add_task(market.sync, investment.start)
         days, cdi, ipca = business_days(market, investment.start)
         return fixed_income_to_out(record, investment, days, cdi, ipca)
+
+    @api.put(
+        "/fixed-income/{investment_id}",
+        tags=["fixed income"],
+        responses={
+            404: {"model": ErrorOut, "description": "Not found"},
+            422: {
+                "model": ErrorOut,
+                "description": "Invalid data, or a withdrawal no longer fits the investment",
+            },
+        },
+    )
+    def update_fixed_income(
+        investment_id: int,
+        payload: FixedIncomeCreate,
+        session: SessionDep,
+        user: UserDep,
+        market: MarketDep,
+        background: BackgroundTasks,
+    ) -> FixedIncomeOut:
+        """Edit an investment. Its redemption and withdrawals stay, and must still fit."""
+        try:
+            edited = FixedIncome(**payload.model_dump())
+            days, cdi, ipca = business_days(market, edited.start)
+            record = repository.update_fixed_income(
+                session, user.id, investment_id, edited, days, cdi, ipca
+            )
+        except repository.FixedIncomeNotFoundError as e:
+            raise api_error(404, "FIXED_INCOME_NOT_FOUND", e) from e
+        except RedemptionTooLargeError as e:
+            error = api_error(422, "REDEMPTION_TOO_LARGE", e)
+            error.detail |= {"date": e.day.isoformat(), "available": str(e.available)}
+            raise error from e
+        except ValueError as e:
+            raise api_error(422, "INVALID_FIXED_INCOME", e) from e
+        if not market.syncing and not market.is_synced(record.start):
+            background.add_task(market.sync, record.start)
+        return fixed_income_to_out(
+            record, repository.fixed_income_to_domain(record), days, cdi, ipca
+        )
 
     @api.get("/fixed-income", tags=["fixed income"])
     def get_fixed_income(

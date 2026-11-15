@@ -31,6 +31,7 @@ from investtrack.models import (
     FixedIncomeRecord,
     IncomeRecord,
     OperationRecord,
+    PartialRedemptionRecord,
     User,
 )
 
@@ -271,6 +272,35 @@ class Auth:
                 AuthSession.user_id == user.id, AuthSession.token_hash != hash_token(token)
             )
         )
+        session.commit()
+
+    def delete_account(self, session: Session, user: User, password: str, ip: str = "") -> None:
+        """Delete the account and everything it owns, after checking the password.
+
+        Its trades, income, fixed income (with its withdrawals), bonus costs
+        and sessions all go. What is shared between accounts stays: quotes,
+        B3's events and the market history. Wrong passwords count in the
+        login throttle, like a password change.
+        """
+        self.throttle.check(user.email, ip)
+        try:
+            self._hasher.verify(user.password_hash, password)
+        except (VerificationError, InvalidHashError):
+            self.throttle.failed(user.email, ip)
+            raise InvalidCredentialsError("wrong password") from None
+        self.throttle.succeeded(user.email, ip)
+
+        owned = select(FixedIncomeRecord.id).where(FixedIncomeRecord.user_id == user.id)
+        # Explicit deletes, children first: SQLite enforces ON DELETE CASCADE
+        # only when foreign keys are switched on, so nothing is left to it.
+        session.execute(
+            delete(PartialRedemptionRecord).where(
+                PartialRedemptionRecord.fixed_income_id.in_(owned)
+            )
+        )
+        for model in (FixedIncomeRecord, OperationRecord, IncomeRecord, BonusCost, AuthSession):
+            session.execute(delete(model).where(model.user_id == user.id))
+        session.delete(user)
         session.commit()
 
     def logout(self, session: Session, token: str) -> None:

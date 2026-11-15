@@ -524,6 +524,32 @@ def delete_partial_redemption(
     return record
 
 
+def update_fixed_income(
+    session: Session,
+    user_id: int,
+    investment_id: int,
+    edited: FixedIncome,
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None = None,
+) -> FixedIncomeRecord:
+    """Change what was typed (name, product, rate, dates, amount).
+
+    The redemption and the partial withdrawals stay, and must still fit:
+    the domain class checks their dates, and valuing it checks that each
+    withdrawal is smaller than the value that day (RedemptionTooLargeError).
+    Nothing is saved when either fails.
+    """
+    record = get_fixed_income(session, user_id, investment_id)
+    current = fixed_income_to_domain(record)
+    candidate = replace(edited, redeemed_on=current.redeemed_on, partial=current.partial)
+    gross_values(candidate, business_days, cdi, ipca)  # raises if a withdrawal no longer fits
+    for field in ("name", "product", "indexer", "rate", "start", "maturity", "amount"):
+        setattr(record, field, getattr(candidate, field))
+    session.commit()
+    return record
+
+
 def delete_fixed_income(session: Session, user_id: int, investment_id: int) -> None:
     session.delete(get_fixed_income(session, user_id, investment_id))
     session.commit()

@@ -1,6 +1,13 @@
 import { useState, type FormEvent } from 'react'
-import { useCreateFixedIncome, type FixedIncomeInput, type Schemas } from '../api/queries'
-import { decimalField, todayIso } from '../format'
+import { ApiError } from '../api/errors'
+import {
+  useCreateFixedIncome,
+  useUpdateFixedIncome,
+  type FixedIncome,
+  type FixedIncomeInput,
+  type Schemas,
+} from '../api/queries'
+import { decimalField, quantity, todayIso } from '../format'
 import { FI_INDEXERS, FI_PRODUCTS } from '../labels'
 
 const RATE_HELP: Record<Schemas['Indexer'], string> = {
@@ -14,18 +21,27 @@ function nextYear(iso: string): string {
   return `${Number(iso.slice(0, 4)) + 1}${iso.slice(4)}`.replace('-02-29', '-02-28')
 }
 
-/** A new fixed income investment: the form inside NewOperationDialog. */
-export function FixedIncomeForm({ onClose }: { onClose: () => void }) {
+// Shown as typed in Brazil ("110", "5000,5"), not as the API sends it ("5000.50").
+const asTyped = (value: string) => quantity(value).replace(/\./g, '')
+
+/**
+ * A fixed income investment: a new one (inside NewOperationDialog), or
+ * `investment` edited. Editing keeps its redemption and withdrawals; the API
+ * refuses a change they would no longer fit.
+ */
+export function FixedIncomeForm({ investment, onClose }: { investment?: FixedIncome; onClose: () => void }) {
   const today = todayIso()
-  const [name, setName] = useState('')
-  const [product, setProduct] = useState<Schemas['Product']>('CDB')
-  const [indexer, setIndexer] = useState<Schemas['Indexer']>('CDI')
-  const [rate, setRate] = useState('')
-  const [start, setStart] = useState(today)
-  const [maturity, setMaturity] = useState(nextYear(today))
-  const [amount, setAmount] = useState('')
+  const [name, setName] = useState(investment?.name ?? '')
+  const [product, setProduct] = useState<Schemas['Product']>(investment?.product ?? 'CDB')
+  const [indexer, setIndexer] = useState<Schemas['Indexer']>(investment?.indexer ?? 'CDI')
+  const [rate, setRate] = useState(investment ? asTyped(investment.rate) : '')
+  const [start, setStart] = useState(investment?.start ?? today)
+  const [maturity, setMaturity] = useState(investment?.maturity ?? nextYear(today))
+  const [amount, setAmount] = useState(investment ? asTyped(investment.amount) : '')
   const [invalid, setInvalid] = useState<string | null>(null)
   const create = useCreateFixedIncome()
+  const update = useUpdateFixedIncome()
+  const mutation = investment ? update : create
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -46,10 +62,17 @@ export function FixedIncomeForm({ onClose }: { onClose: () => void }) {
       return
     }
     setInvalid(null)
-    create.mutate(body, { onSuccess: onClose })
+    if (investment) update.mutate({ id: investment.id, body }, { onSuccess: onClose })
+    else create.mutate(body, { onSuccess: onClose })
   }
 
-  const error = invalid ?? (create.isError ? create.error.message : null)
+  const failed = mutation.error
+  // When editing, "too large" means a withdrawal already made no longer fits the new numbers.
+  const error =
+    invalid ??
+    (failed instanceof ApiError && failed.code === 'REDEMPTION_TOO_LARGE' && investment
+      ? 'Com esses dados, a aplicação valeria menos do que um resgate parcial já feito. Confira o valor e as datas.'
+      : (failed?.message ?? null))
 
   return (
     <form onSubmit={submit} className="stack">
@@ -105,8 +128,8 @@ export function FixedIncomeForm({ onClose }: { onClose: () => void }) {
         <button type="button" onClick={onClose}>
           Cancelar
         </button>
-        <button type="submit" className="primary" disabled={create.isPending}>
-          Registrar
+        <button type="submit" className="primary" disabled={mutation.isPending}>
+          {investment ? 'Salvar alterações' : 'Registrar'}
         </button>
       </div>
     </form>

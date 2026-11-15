@@ -158,6 +158,37 @@ def test_wrong_current_passwords_are_throttled(session, auth):
         auth.change_password(session, user, token, "long enough", "a new one!", ip="1.2.3.4")
 
 
+def test_delete_account_leaves_other_accounts_alone(session, auth):
+    ana = auth.register(session, "ana@x.com", "long enough")
+    bia = auth.register(session, "bia@x.com", "long enough")
+    auth.login(session, "ana@x.com", "long enough")
+    bia_token, _ = auth.login(session, "bia@x.com", "long enough")
+    asset = Asset(ticker="PETR4", asset_type=AssetType.STOCK)
+    session.add(asset)
+    for user in (ana, bia):
+        session.add(
+            OperationRecord(
+                user_id=user.id,
+                asset=asset,
+                op_type=OpType.BUY,
+                date=date(2026, 1, 5),
+                quantity=Decimal("1"),
+                price=Decimal("10"),
+                fees=Decimal("0"),
+            )
+        )
+    session.commit()
+
+    with pytest.raises(InvalidCredentialsError):
+        auth.delete_account(session, ana, "wrong one")
+    auth.delete_account(session, ana, "long enough")
+
+    assert session.scalars(select(User.email)).all() == ["bia@x.com"]
+    assert session.scalars(select(OperationRecord.user_id)).all() == [bia.id]
+    assert session.scalars(select(AuthSession.user_id)).all() == [bia.id]
+    assert auth.user_for_token(session, bia_token) == bia
+
+
 def test_weak_old_hash_is_upgraded_on_login(session, clock):
     weak = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
     Auth(hasher=weak, clock=clock).register(session, "ana@x.com", "long enough")

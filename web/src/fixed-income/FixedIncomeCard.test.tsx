@@ -166,3 +166,23 @@ test('while the CDI is syncing, totals are unknown and the list refetches by its
   await vi.waitFor(() => expect(metric('Valor bruto')).toHaveTextContent('R$ 5.400,10'), { timeout: 5000 })
   expect(screen.queryByText(/Aguardando o histórico do CDI/)).not.toBeInTheDocument()
 })
+
+test('an investment can be edited from its row', async () => {
+  const api = fakeApi({
+    'GET /fixed-income': { body: [fixedIncome()] },
+    'PUT /fixed-income/1': { body: fixedIncome({ name: 'CDB Banco Y' }) },
+  })
+  renderWithApp(<FixedIncomeCard />)
+  const user = userEvent.setup()
+
+  await user.click(await screen.findByRole('button', { name: 'Editar CDB Banco X' }))
+  const dialog = screen.getByRole('dialog', { name: 'Editar CDB Banco X' })
+  expect(within(dialog).getByLabelText('Nome')).toHaveValue('CDB Banco X')
+  await user.clear(within(dialog).getByLabelText('Nome'))
+  await user.type(within(dialog).getByLabelText('Nome'), 'CDB Banco Y')
+  await user.click(within(dialog).getByRole('button', { name: 'Salvar alterações' }))
+
+  await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  const [sent] = await api.sent('PUT /fixed-income/1')
+  expect(sent).toMatchObject({ name: 'CDB Banco Y', product: 'CDB', rate: '110', amount: '5000' })
+})

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useFixedIncome } from '../api/queries'
+import { Modal } from '../components/Modal'
 import { brDate, brl, pct, sumDecimals, toneOf } from '../format'
 import { FI_STATUS } from '../labels'
+import { FixedIncomeForm } from './FixedIncomeForm'
 import { InvestmentDialog } from './InvestmentDialog'
 import { rateLabel } from './rate'
 
@@ -13,6 +15,7 @@ export function FixedIncomeCard() {
   const investments = useFixedIncome()
   // The id, not the object: the dialog must show the refetched numbers after a change.
   const [openId, setOpenId] = useState<number | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   if (investments.isPending) return null // the rest of the Carteira shows meanwhile
   if (investments.isError) return <p className="alert error">{investments.error.message}</p>
@@ -21,6 +24,7 @@ export function FixedIncomeCard() {
   if (!all.length) return null // nothing to show: the card would be empty
   const active = all.filter((f) => f.status === 'ACTIVE')
   const open = all.find((f) => f.id === openId)
+  const editing = all.find((f) => f.id === editingId)
   // Unknown if any value is unknown: a partial sum shown as the total would be wrong.
   const total = (key: 'principal' | 'gross' | 'net') => {
     const values = active.map((f) => f[key])
@@ -95,6 +99,9 @@ export function FixedIncomeCard() {
                 <td className={`num ${toneOf(f.gross_return) ?? ''}`}>{pct(f.gross_return)}</td>
                 <td>
                   <div className="row-actions">
+                    <button onClick={() => setEditingId(f.id)} aria-label={`Editar ${f.name}`}>
+                      Editar
+                    </button>
                     <button onClick={() => setOpenId(f.id)} aria-label={`Resgatar ou apagar ${f.name}`}>
                       Resgatar…
                     </button>
@@ -111,6 +118,11 @@ export function FixedIncomeCard() {
       </p>
 
       {open && <InvestmentDialog investment={open} onClose={() => setOpenId(null)} />}
+      {editing && (
+        <Modal title={`Editar ${editing.name}`} onClose={() => setEditingId(null)}>
+          <FixedIncomeForm key={editing.id} investment={editing} onClose={() => setEditingId(null)} />
+        </Modal>
+      )}
     </section>
   )
 }

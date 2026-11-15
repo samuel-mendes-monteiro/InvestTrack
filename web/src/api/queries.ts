@@ -169,6 +169,15 @@ export function useCreateFixedIncome() {
   })
 }
 
+export function useUpdateFixedIncome() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: FixedIncomeInput }) =>
+      call(api.PUT('/api/fixed-income/{investment_id}', { params: { path: { investment_id: id } }, body })),
+    onSuccess: invalidate,
+  })
+}
+
 /** Redeem everything on a day, or undo the redemption with null. */
 export function useRedeem() {
   const invalidate = useInvalidateAll()

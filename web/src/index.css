@@ -1808,3 +1808,25 @@ table.ops tbody tr:hover > * {
   max-width: 460px;
   margin: 0;
 }
+
+/* --- Danger zone (Perfil) --------------------------------------------------- */
+
+.danger-zone {
+  border-color: color-mix(in srgb, var(--negative) 40%, var(--border));
+}
+
+.danger-zone h2 {
+  margin: 0 0 6px;
+  color: var(--negative);
+}
+
+.danger-zone p {
+  margin: 0 0 12px;
+}
+
+button.danger-solid {
+  border-color: var(--negative);
+  background: var(--negative);
+  color: #fff;
+  font-weight: 600;
+}
