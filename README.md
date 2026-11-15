@@ -262,6 +262,12 @@ pip install -e ".[dev]"
 cd web && npm ci && cd ..
 ```
 
+Tests use an in-memory SQLite database. To run them on PostgreSQL too, as CI does, point `TEST_DATABASE_URL` at an empty database (every table in it is dropped):
+
+```bash
+TEST_DATABASE_URL=postgresql://user:pass@localhost/investtrack_test pytest
+```
+
 Quotes come from brapi.dev. Copy the example settings and add your free brapi token (without a token, only PETR4, VALE3, MGLU3 and ITUB4 work):
 
 ```bash
@@ -304,6 +310,16 @@ The image serves the API and the web app together on port 8000:
 docker build -t investtrack .
 docker run -p 8000:8000 -v investtrack-data:/data --env-file .env investtrack
 ```
+
+### Deploying for free: Render + Neon
+
+[Render](https://render.com)'s free plan runs the Docker image but has no disk, so the database is PostgreSQL on [Neon](https://neon.tech)'s free plan. [`render.yaml`](render.yaml) has the settings.
+
+1. On Neon, create a project in **AWS US East 1 (N. Virginia)** and copy its connection string.
+2. On Render, **New → Blueprint**, pick this repository, and fill in `DATABASE_URL` (the Neon string) and `BRAPI_TOKEN`.
+3. Every push to `main` deploys again. Migrations run when the app starts.
+
+The free service sleeps after 15 minutes without visits, and the next visit takes about a minute to wake it. A year of B3 history takes about 35 MB of the database.
 
 ### Deploying to Fly.io
 
@@ -359,7 +375,8 @@ Every route is under `/api`. All except `/api/health`, `/api/auth/register` and 
 |---|---|---|
 | `BRAPI_TOKEN` | *(empty)* | brapi.dev token |
 | `PRICE_CACHE_MINUTES` | `15` | How long a quote is reused |
-| `DATABASE_URL` | `sqlite:///investtrack.db` | Any SQLAlchemy URL, e.g. PostgreSQL |
+| `DATABASE_URL` | `sqlite:///investtrack.db` | SQLite or PostgreSQL (`postgres://` and `postgresql://` URLs use psycopg 3) |
+| `PORT` | `8000` | Port the Docker image listens on (Render sets it) |
 | `API_URL` | `http://localhost:8000` | Where the frontend's dev server forwards `/api` (read by `npm run dev`) |
 | `WEB_DIST` | *(empty)* | The built web app (`web/dist`) for the API to serve; set in the Docker image |
 

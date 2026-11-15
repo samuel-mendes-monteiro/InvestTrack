@@ -21,7 +21,7 @@ from investtrack.core.portfolio import (
     StockEvent,
     StockEventType,
 )
-from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.db import init_db
 from investtrack.storage.events import StaticEvents
 from investtrack.storage.models import Asset, OperationRecord, User
 from investtrack.storage.repository import (
@@ -40,6 +40,7 @@ from investtrack.storage.repository import (
     set_bonus_cost,
     update_operation,
 )
+from tests.conftest import TEST_DATABASE_URL, fresh_engine
 
 USER = 1  # the first account of a fresh database
 
@@ -47,7 +48,7 @@ USER = 1  # the first account of a fresh database
 @pytest.fixture
 def session():
     """A fresh in-memory SQLite database for each test, with one account."""
-    engine = create_db_engine("sqlite://")
+    engine = fresh_engine()
     init_db(engine)
     with Session(engine) as s:
         s.add(User(email="ana@example.com", password_hash="-", created_at=datetime.now(UTC)))
@@ -230,6 +231,7 @@ def test_portfolio_from_database(session):
     assert portfolio["HGLG11"].avg_price == Decimal("158.40")
 
 
+@pytest.mark.skipif(bool(TEST_DATABASE_URL), reason="SQLite only")
 def test_values_are_stored_as_text_on_sqlite(session):
     add_operation(session, USER, buy(1, "100", "30.10"))
     stored_type = session.execute(text("SELECT typeof(price) FROM operations")).scalar()

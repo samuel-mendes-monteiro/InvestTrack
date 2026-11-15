@@ -11,10 +11,10 @@ from investtrack.api import create_app
 from investtrack.api.deps import SESSION_COOKIE
 from investtrack.core.income import IncomeEvent, IncomeType
 from investtrack.core.portfolio import StockEvent, StockEventType
-from investtrack.storage.db import create_db_engine
 from investtrack.storage.events import StaticEvents
 from investtrack.storage.market_data import StaticMarketData
 from investtrack.storage.prices import StaticPriceProvider
+from tests.conftest import fresh_engine
 from tests.test_b3_statement import statement, trade
 
 PRICES = StaticPriceProvider({"PETR4": Decimal("38"), "HGLG11": Decimal("160")})
@@ -39,7 +39,7 @@ def api_client(**overrides):
     """
     own_engine = "engine" not in overrides
     settings = {
-        "engine": create_db_engine("sqlite://") if own_engine else None,
+        "engine": fresh_engine() if own_engine else None,
         "price_provider": PRICES,
         "events": StaticEvents(),
         "market_data": StaticMarketData(),
@@ -58,7 +58,7 @@ def api_client(**overrides):
 @pytest.fixture
 def shared_engine():
     """One database for two apps: two accounts using the same server."""
-    engine = create_db_engine("sqlite://")
+    engine = fresh_engine()
     yield engine
     engine.dispose()
 
@@ -1276,7 +1276,7 @@ def web_client(tmp_path):
     (tmp_path / "assets" / "index-abc123.js").write_text("console.log(1)")
     (tmp_path / "favicon.svg").write_text("<svg/>")
     (tmp_path.parent / "secret.txt").write_text("outside the build")
-    engine = create_db_engine("sqlite://")
+    engine = fresh_engine()
     app = create_app(
         engine=engine,
         price_provider=PRICES,

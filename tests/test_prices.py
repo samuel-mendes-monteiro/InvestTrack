@@ -7,8 +7,9 @@ from unittest.mock import Mock
 import pytest
 
 from investtrack.sources.brapi import QuoteUnavailableError, SourceDownError
-from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.db import init_db
 from investtrack.storage.prices import CachedPriceProvider
+from tests.conftest import fresh_engine
 
 T0 = datetime(2026, 11, 14, 13, 0, tzinfo=UTC)
 
@@ -26,7 +27,7 @@ class FakeClock:
 
 @pytest.fixture
 def engine():
-    e = create_db_engine("sqlite://")
+    e = fresh_engine()
     init_db(e)
     yield e
     e.dispose()

@@ -1,11 +1,14 @@
 """Migrations: old databases keep their data, new ones get the full schema."""
 
+from decimal import Decimal
+
 import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, text
 
-from investtrack.storage.db import MIGRATIONS, create_db_engine, init_db
+from investtrack.storage.db import MIGRATIONS, init_db
+from tests.conftest import fresh_engine
 
 
 def alembic(engine, action: str, revision: str) -> None:
@@ -18,7 +21,7 @@ def alembic(engine, action: str, revision: str) -> None:
 
 @pytest.fixture
 def engine():
-    e = create_db_engine("sqlite://")
+    e = fresh_engine()
     yield e
     e.dispose()
 
@@ -33,7 +36,7 @@ def v04(engine):
         c.execute(
             text(
                 "CREATE TABLE income_event_sync "
-                "(ticker VARCHAR(12) PRIMARY KEY, synced_at DATETIME)"
+                "(ticker VARCHAR(12) PRIMARY KEY, synced_at TIMESTAMP)"
             )
         )
         c.execute(text("INSERT INTO assets (id, ticker, asset_type) VALUES (1, 'PETR4', 'STOCK')"))
@@ -69,11 +72,10 @@ def test_v04_database_keeps_its_data_and_gets_owners(v04):
     init_db(engine)
     with engine.connect() as c:
         assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004"
-        assert c.execute(text("SELECT quantity, user_id FROM operations")).one() == ("100", None)
-        assert c.execute(text("SELECT ticker, unit_cost FROM bonus_costs")).one() == (
-            "PETR4",
-            "4.5",
-        )
+        quantity, owner = c.execute(text("SELECT quantity, user_id FROM operations")).one()
+        assert (Decimal(quantity), owner) == (Decimal("100"), None)
+        ticker, unit_cost = c.execute(text("SELECT ticker, unit_cost FROM bonus_costs")).one()
+        assert (ticker, Decimal(unit_cost)) == ("PETR4", Decimal("4.5"))
     assert {"id", "user_id"} <= columns(engine, "bonus_costs")
     assert "income_event_sync" not in inspect(engine).get_table_names()
 
@@ -93,4 +95,7 @@ def test_downgrade_restores_v04_shape_and_data(v04):
     assert "users" not in inspect(engine).get_table_names()
     assert "user_id" not in columns(engine, "operations")
     with engine.connect() as c:
-        assert c.execute(text("SELECT unit_cost FROM bonus_costs")).scalar() == "4.5"
+        # text on SQLite, NUMERIC on PostgreSQL: the same number either way
+        assert Decimal(c.execute(text("SELECT unit_cost FROM bonus_costs")).scalar()) == Decimal(
+            "4.5"
+        )

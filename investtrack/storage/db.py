@@ -34,7 +34,9 @@ class SafeDecimal(TypeDecorator):
     def load_dialect_impl(self, dialect):
         if dialect.name == "sqlite":
             return dialect.type_descriptor(String(40))
-        return dialect.type_descriptor(Numeric(20, 8))
+        # No precision or scale: NUMERIC keeps every digit it is given, like the
+        # text on SQLite. NUMERIC(20, 8) would round a 1/3 reverse split factor.
+        return dialect.type_descriptor(Numeric())
 
     def process_bind_param(self, value, dialect):
         if value is None:
@@ -47,10 +49,25 @@ class SafeDecimal(TypeDecorator):
         return None if value is None else Decimal(value)
 
 
+def database_url(url: str | None = None) -> str:
+    """The URL to use, with PostgreSQL always through psycopg 3.
+
+    Hosts hand out URLs as postgres:// or postgresql://, which SQLAlchemy
+    would read as the older psycopg2 driver.
+    """
+    url = url or os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url.removeprefix(prefix)
+    return url
+
+
 def create_db_engine(url: str | None = None) -> Engine:
     """Create the engine from the given URL or the DATABASE_URL env variable."""
-    url = url or os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
-    kwargs = {}
+    url = database_url(url)
+    # A hosted database closes idle connections (Neon even suspends itself):
+    # check each one before use instead of failing the next request.
+    kwargs = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         # FastAPI runs sync endpoints in a thread pool, so a connection may be
         # used by a different thread than the one that opened it. That is safe

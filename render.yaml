@@ -1,0 +1,20 @@
+# Render Blueprint: the web app on Render's free plan, with the database on
+# Neon (free PostgreSQL), since Render's free services have no disk.
+#
+# Free services sleep after 15 minutes without requests; the next visit
+# wakes the service up in about a minute.
+services:
+  - type: web
+    name: investtrack
+    runtime: docker
+    plan: free
+    # Same region as the Neon database (AWS us-east-1): every page makes
+    # several queries, so the server must be close to the database.
+    region: virginia
+    healthCheckPath: /api/health
+    autoDeploy: true # every push to main deploys
+    envVars:
+      - key: DATABASE_URL # Neon's connection string, typed in Render's dashboard
+        sync: false
+      - key: BRAPI_TOKEN # brapi.dev token, typed in Render's dashboard
+        sync: false

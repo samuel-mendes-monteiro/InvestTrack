@@ -17,6 +17,7 @@ dependencies = [
     "argon2-cffi>=23.1",
     "openpyxl>=3.1",
     "defusedxml>=0.7",  # openpyxl uses it to parse uploaded files safely
+    "psycopg[binary]>=3.2",  # PostgreSQL driver, for a hosted database
 ]
 
 [project.optional-dependencies]

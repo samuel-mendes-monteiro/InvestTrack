@@ -86,12 +86,17 @@ class CotahistClient:
             raise NotPublishedError(f"COTAHIST {period} not published")
         if not response.ok:
             raise HistoryUnavailableError(f"COTAHIST {period}: HTTP {response.status_code}")
+        # Read line by line straight out of the zip: a month is about 10 MB
+        # zipped but ten times that unzipped, and only the spot-market lines
+        # are kept. Reading it whole peaked at ~440 MB, more than a small
+        # server has.
         try:
             with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-                text = z.read(z.namelist()[0]).decode("latin-1")
+                with z.open(z.namelist()[0]) as raw:
+                    lines = io.TextIOWrapper(raw, encoding="latin-1", newline=None)
+                    return list(parse_cotahist(line.rstrip("\n") for line in lines))
         except (zipfile.BadZipFile, IndexError) as e:
             raise HistoryUnavailableError(f"COTAHIST {period}: not a valid zip") from e
-        return list(parse_cotahist(iter(text.splitlines())))
 
 
 # --- Ibovespa ----------------------------------------------------------------

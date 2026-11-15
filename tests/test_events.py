@@ -9,8 +9,9 @@ import pytest
 from investtrack.core.income import IncomeEvent, IncomeType, TickerEvents
 from investtrack.core.portfolio import AssetType, StockEvent, StockEventType
 from investtrack.sources.b3 import EventsUnavailableError, SourceDownError
-from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.db import init_db
 from investtrack.storage.events import StaticEvents, StoredEvents
+from tests.conftest import fresh_engine
 
 T0 = datetime(2026, 11, 14, 13, 0, tzinfo=UTC)
 NOTHING = TickerEvents([], [])
@@ -29,7 +30,7 @@ class FakeClock:
 
 @pytest.fixture
 def engine():
-    e = create_db_engine("sqlite://")
+    e = fresh_engine()
     init_db(e)
     yield e
     e.dispose()
