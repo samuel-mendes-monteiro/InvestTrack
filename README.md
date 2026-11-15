@@ -8,6 +8,8 @@
 
 > A personal investment portfolio tracker for the Brazilian stock market (B3), with live quotes and exact average-cost and profit calculations.
 
+**Live at [investtrack.online](https://investtrack.online)**: create an account and import your B3 statement. It runs on free plans, so the first visit after a quiet while takes up to a minute to wake the server.
+
 ![Carteira: net worth, totals, cumulative return against CDI and Ibovespa, and the allocation](docs/portfolio.jpg)
 
 ## The problem
@@ -186,7 +188,7 @@ Over the whole history it starts from nothing, so the first purchase, fees inclu
 ## Technical decisions
 
 - **No `float` for money.** `Decimal` everywhere, because `0.1 + 0.2 != 0.3` in floating point. This is enforced, not just a convention: the core rejects floats, JSON numbers from brapi and from clients are parsed straight into `Decimal`, and money is typed into text fields (accepting `30,50` or `1.234,56`), not number inputs, which give the browser's float.
-- **Decimals are stored as text on SQLite.** SQLite has no real decimal type, so SQLAlchemy would silently store `Numeric` as a float. A custom column type keeps exact values on SQLite and uses native `NUMERIC` on PostgreSQL.
+- **Decimals are stored as text on SQLite.** SQLite has no real decimal type, so SQLAlchemy would silently store `Numeric` as a float. A custom column type keeps exact values on SQLite and uses native `NUMERIC` on PostgreSQL, without a precision or scale: `NUMERIC(20, 8)` would round a price with 9 decimal places or a 1/3 reverse split factor.
 - **Rounding happens only for display.** Calculations keep full precision; the API rounds to 2 decimals only in the response, and sends money as JSON strings (`"35.10"`) so clients never turn it into a float.
 - **Calculations are isolated** in a pure module that takes a list of trades and returns positions. The repository reuses it to validate changes: adding a sale, or deleting a purchase that a later sale depends on, is refused before anything is saved.
 - **Errors have stable codes.** The API returns `{"code": "INSUFFICIENT_POSITION", "ticker": ..., "available": ...}`; the frontend translates codes into Portuguese. The backend stays language-neutral.
@@ -222,7 +224,10 @@ Over the whole history it starts from nothing, so the first purchase, fees inclu
 - **An unknown total is shown as unknown.** While the CDI history is still downloading, an investment has no value yet. Summing only the valued ones would show a smaller net worth as if it were right, so `/portfolio` returns `fixed_income: null` and `syncing: true`, the Carteira shows "—" with a notice, and asks again until the value is known.
 - **Quantities times prices are exact in the browser too.** `multiplyDecimals` multiplies the decimal strings with `BigInt` (an operation's total, quantity × price ± fees), so `0.1 × 0.2` is `0.02`, not `0.020000000000000004`.
 - **Changing the password or deleting the account asks for the password**, so a session left open on someone else's computer is not enough. A wrong one answers `403`, not `401`: any `401` means "no session" and logs the app out. Changing the password ends every other session; deleting the account removes its rows one table at a time, since SQLite only cascades deletes with foreign keys switched on.
-- **One container, one machine.** The [Dockerfile](Dockerfile) builds the React app with Node in a first stage and copies only the result into the Python image. The server runs as an unprivileged user; the database is a SQLite file on a persistent volume. That rules out a second machine (they can't share a file), and that is fine for one person's portfolio; `DATABASE_URL` can point at PostgreSQL instead. Behind Fly's proxy, uvicorn trusts the forwarded headers, so the login limit sees each client's own IP and the cookie is marked `Secure`.
+- **One container.** The [Dockerfile](Dockerfile) builds the React app with Node in a first stage and copies only the result into the Python image. The server runs as an unprivileged user, with a home of its own: with root's `HOME` left in place, PostgreSQL's client library looked for a certificate in `/root` on every SSL connection and failed with "permission denied". Behind the host's proxy, uvicorn trusts the forwarded headers, so the login limit sees each client's own IP and the cookie is marked `Secure`.
+- **SQLite locally, PostgreSQL deployed.** SQLite needs no setup and is a single file, which suits development and a server with a disk. Free hosts have no persistent disk, so the deployed app uses PostgreSQL on Neon, through the same SQLAlchemy code. The whole test suite runs on both in CI, so a query that only works on one of them fails there. Connections are checked before use, since Neon closes them when it suspends an idle database.
+- **Built for a small server.** The free plan has 512 MB of memory. A month of COTAHIST is about 10 MB zipped but ten times that unzipped, so it is read line by line straight out of the zip instead of decoded whole: the peak went from about 440 MB to under 70 MB.
+- **The backend has layers, and a test keeps them.** `core` (pure calculations) imports nothing else from the project, `sources` turn outside data into `core`'s types, `storage` uses both, and `api` uses everything. [`tests/test_architecture.py`](tests/test_architecture.py) reads every import and fails on one in the wrong direction.
 
 ## Testing
 
@@ -230,7 +235,7 @@ Over the whole history it starts from nothing, so the first purchase, fees inclu
 pytest --cov
 ```
 
-442 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota.
+445 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota. They run on an in-memory SQLite database, and on PostgreSQL when `TEST_DATABASE_URL` is set.
 
 ```bash
 cd web && npm test
@@ -238,7 +243,7 @@ cd web && npm test
 
 108 frontend tests ([Vitest](https://vitest.dev) and Testing Library) drive the screens like a user (typing, clicking, uploading a statement) against a fake API, and check what is shown and what is sent.
 
-Every push runs, with [GitHub Actions](.github/workflows/ci.yml), the linter, the formatter check and the tests on Python 3.12 and 3.14, and the frontend's linter, type check, tests and build, and builds the Docker image.
+Every push runs, with [GitHub Actions](.github/workflows/ci.yml), the linter, the formatter check and the tests on Python 3.12 and 3.14, the tests again on PostgreSQL, the frontend's linter, type check, tests and build, and builds the Docker image.
 
 The calculation tests include the worked example used to design the rules:
 
@@ -318,8 +323,9 @@ docker run -p 8000:8000 -v investtrack-data:/data --env-file .env investtrack
 1. On Neon, create a project in **AWS US East 1 (N. Virginia)** and copy its connection string.
 2. On Render, **New → Blueprint**, pick this repository, and fill in `DATABASE_URL` (the Neon string) and `BRAPI_TOKEN`.
 3. Every push to `main` deploys again. Migrations run when the app starts.
+4. For your own domain: on Render, **Settings → Custom Domains**, then at the domain's DNS an `A` record for `@` pointing to `216.24.57.1` and a `CNAME` for `www` pointing to the service's `onrender.com` address. Render issues the HTTPS certificate and redirects `www` to the bare domain.
 
-The free service sleeps after 15 minutes without visits, and the next visit takes about a minute to wake it. A year of B3 history takes about 35 MB of the database.
+The service's `onrender.com` address gets a random suffix and keeps it: renaming the service doesn't change it. The free service sleeps after 15 minutes without visits, and the next visit takes about a minute to wake it. A year of B3 history takes about 35 MB of the database.
 
 ### Deploying to Fly.io
 
@@ -398,6 +404,7 @@ Every route is under `/api`. All except `/api/health`, `/api/auth/register` and 
 - [x] **v0.7:** partial redemptions and IPCA+ fixed income, editing operations, login rate limiting
 - [x] **v1.0:** React + TypeScript frontend, typed from the API's OpenAPI schema
 - [x] **v1.0:** deployment with Docker on Fly.io, session in an HttpOnly cookie
+- [x] **v1.1:** live at [investtrack.online](https://investtrack.online), free on Render with PostgreSQL on Neon; backend split into layers
 - [x] **v1.1:** redesigned screens, Patrimônio page with the gain net of deposits, return split into prices and income, product page, onboarding and import guide, price suggestions, profile with password change and account deletion, editable fixed income
 
 ## License

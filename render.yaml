@@ -5,7 +5,9 @@
 # wakes the service up in about a minute.
 services:
   - type: web
-    # Also the address: invest-track.onrender.com ("investtrack" is taken).
+    # Render adds a random suffix to the address (invest-track-y59y.onrender.com)
+    # and keeps it for the life of the service: renaming here doesn't change it.
+    # The site is served at https://investtrack.online (Settings → Custom Domains).
     name: invest-track
     runtime: docker
     plan: free
