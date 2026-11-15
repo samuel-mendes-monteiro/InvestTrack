@@ -84,8 +84,8 @@ function SessionCheck() {
 const PAGES = [
   { path: '/', label: 'Carteira', icon: <WalletIcon />, element: <PortfolioPage /> },
   { path: '/rentabilidade', label: 'Rentabilidade', icon: <ChartIcon />, element: <PerformancePage /> },
-  { path: '/operacoes', label: 'Operações', icon: <ListIcon />, element: <OperationsPage /> },
   { path: '/proventos', label: 'Proventos', icon: <CoinsIcon />, element: <IncomePage /> },
+  { path: '/operacoes', label: 'Operações', icon: <ListIcon />, element: <OperationsPage /> },
 ]
 
 /** Everything behind the login. */
