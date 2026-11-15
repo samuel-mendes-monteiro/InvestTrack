@@ -62,7 +62,7 @@ flowchart LR
     Events --> DB
     API --> Market["<b>Market history</b><br/>background download"]
     Market -- "COTAHIST files" --> B3
-    Market -- "SGS API" --> BCB["Central Bank (CDI)"]
+    Market -- "SGS API" --> BCB["Central Bank (CDI, IPCA)"]
     Market --> DB
 ```
 
@@ -85,7 +85,7 @@ The backend is split into layers, and imports only point downwards: `core` uses 
 | | [`sources/b3_statement.py`](investtrack/sources/b3_statement.py) | Reads B3's trade statement (Excel); the only module that knows its format |
 | | [`sources/brapi.py`](investtrack/sources/brapi.py) | The only module that knows brapi's URL and JSON format |
 | | [`sources/history.py`](investtrack/sources/history.py) | Clients and parsers for COTAHIST files, the Ibovespa table and the CDI and IPCA series |
-| **storage** | [`storage/models.py`](investtrack/storage/models.py), [`db.py`](investtrack/storage/db.py) | Tables (SQLAlchemy), exact decimals on SQLite, engine and migrations on startup |
+| **storage** | [`storage/models.py`](investtrack/storage/models.py), [`db.py`](investtrack/storage/db.py) | Tables (SQLAlchemy), exact decimals on SQLite and PostgreSQL, engine and migrations on startup |
 | | [`storage/repository.py`](investtrack/storage/repository.py) | Saves and reads each user's data; validates every change through the calculation core |
 | | [`storage/events.py`](investtrack/storage/events.py) | Stores B3 events (income, splits, bonus shares), synced once a day, with fallback to what is stored |
 | | [`storage/market_data.py`](investtrack/storage/market_data.py) | Stores daily prices, Ibovespa, CDI and IPCA; downloads only what is missing, in the background |
@@ -256,7 +256,7 @@ The calculation tests include the worked example used to design the rules:
 
 ## Getting started
 
-Requires Python 3.12+ and Node.js 20+.
+Requires Python 3.12+ and Node.js 20.19+ or 22.12+ (what Vite 8 needs).
 
 ```bash
 git clone https://github.com/samuel-mendes-monteiro/InvestTrack.git
