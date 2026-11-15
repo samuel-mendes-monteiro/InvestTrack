@@ -277,6 +277,9 @@ h2 {
 }
 
 .table-wrap {
+  /* Positioned, so an absolutely placed child (a .sr-only header) stays inside
+     the scrolling area instead of widening the whole page on phones. */
+  position: relative;
   overflow-x: auto;
 }
 
@@ -593,6 +596,7 @@ ul.small {
 
 /* Grid and flex items won't shrink below their content by default, and a
    chart sized to "100%" would then keep the whole column wide on phones. */
+.portfolio > *,
 .portfolio-top > *,
 .networth {
   min-width: 0;
@@ -899,8 +903,7 @@ a.button:focus-visible {
     position: fixed;
     inset: auto 0 0;
     z-index: 10;
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    display: flex;
     gap: 0;
     width: auto;
     padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
@@ -910,6 +913,8 @@ a.button:focus-visible {
   }
 
   .topbar .app-nav a {
+    flex: 1 1 0; /* equal widths, however many areas there are */
+    min-width: 0;
     flex-direction: column;
     gap: 2px;
     padding: 6px 2px;
@@ -1267,4 +1272,67 @@ a.button:focus-visible {
 
 .profile .alert {
   margin: 0;
+}
+
+/* "Nova operação": exchange trade or fixed income, as two halves of one control. */
+.kind-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 16px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.kind-switch button {
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.kind-switch button[aria-pressed='true'] {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Fixed income card: its three totals in a row above the table. */
+.fi-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  margin: 4px 0 12px;
+}
+
+.fi-totals dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.fi-totals dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fixed-income .alert {
+  margin: 0 0 12px;
+}
+
+.fixed-income p.small {
+  margin-bottom: 0;
+}
+
+.small-tag {
+  margin-right: 6px;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.fixed-income tbody th .chip {
+  font-weight: 500;
 }

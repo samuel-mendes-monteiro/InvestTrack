@@ -1,5 +1,6 @@
 import { usePortfolio } from '../api/queries'
 import { Metric } from '../components/Metric'
+import { FixedIncomeCard } from '../fixed-income/FixedIncomeCard'
 import { brl, isZero, localTime, pct, quantity, sumDecimals, toneOf } from '../format'
 import { Distribution, type Slice } from './Distribution'
 import { NetWorthChart } from './NetWorthChart'
@@ -15,7 +16,7 @@ export function PortfolioPage() {
   const hasFixedIncome = !isZero(totals.fixed_income)
 
   if (!positions.length && !hasFixedIncome) {
-    return <p className="muted">Nenhuma operação ainda. Registre a primeira compra em “Nova operação”.</p>
+    return <p className="muted">Nenhuma operação ainda. Registre a primeira compra ou aplicação em “Nova operação”.</p>
   }
 
   // Totals add up exactly; null (some position without a quote) stays unknown.
@@ -80,52 +81,56 @@ export function PortfolioPage() {
         </p>
       )}
 
-      <section className="card" aria-labelledby="positions-title">
-        <div className="card-head">
-          <h2 id="positions-title">Posições</h2>
-          <span className="muted">{open.length === 1 ? '1 ativo' : `${open.length} ativos`}</span>
-        </div>
-        {/* data-label names each value when a row turns into a card on phones. */}
-        <div className="table-wrap">
-          <table className="data positions" aria-label="Posições">
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th className="num">Qtd</th>
-                <th className="num">Preço médio</th>
-                <th className="num">Cotação</th>
-                <th className="num">Investido</th>
-                <th className="num">Valor atual</th>
-                <th className="num">Resultado</th>
-                <th className="num">Proventos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {open.map((p) => (
-                <tr key={p.ticker}>
-                  <th scope="row" className="ticker">{p.ticker}</th>
-                  <td className="num qty" data-label="Qtd">{quantity(p.quantity)}</td>
-                  <td className="num avg" data-label="Preço médio">{brl(p.avg_price)}</td>
-                  <td className="num price" data-label="Cotação">{brl(p.current_price)}</td>
-                  <td className="num invested" data-label="Investido">{brl(p.invested)}</td>
-                  <td className="num value">{brl(p.current_value)}</td>
-                  <td className="num result">
-                    {p.result == null ? (
-                      '—'
-                    ) : (
-                      <>
-                        <span className={toneOf(p.result)}>{brl(p.result)}</span>{' '}
-                        <span className={`chip ${toneOf(p.result) ?? ''}`}>{pct(p.result_pct)}</span>
-                      </>
-                    )}
-                  </td>
-                  <td className="num income" data-label="Proventos">{brl(p.income)}</td>
+      {open.length > 0 && (
+        <section className="card" aria-labelledby="positions-title">
+          <div className="card-head">
+            <h2 id="positions-title">Posições</h2>
+            <span className="muted">{open.length === 1 ? '1 ativo' : `${open.length} ativos`}</span>
+          </div>
+          {/* data-label names each value when a row turns into a card on phones. */}
+          <div className="table-wrap">
+            <table className="data positions" aria-label="Posições">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th className="num">Qtd</th>
+                  <th className="num">Preço médio</th>
+                  <th className="num">Cotação</th>
+                  <th className="num">Investido</th>
+                  <th className="num">Valor atual</th>
+                  <th className="num">Resultado</th>
+                  <th className="num">Proventos</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {open.map((p) => (
+                  <tr key={p.ticker}>
+                    <th scope="row" className="ticker">{p.ticker}</th>
+                    <td className="num qty" data-label="Qtd">{quantity(p.quantity)}</td>
+                    <td className="num avg" data-label="Preço médio">{brl(p.avg_price)}</td>
+                    <td className="num price" data-label="Cotação">{brl(p.current_price)}</td>
+                    <td className="num invested" data-label="Investido">{brl(p.invested)}</td>
+                    <td className="num value">{brl(p.current_value)}</td>
+                    <td className="num result">
+                      {p.result == null ? (
+                        '—'
+                      ) : (
+                        <>
+                          <span className={toneOf(p.result)}>{brl(p.result)}</span>{' '}
+                          <span className={`chip ${toneOf(p.result) ?? ''}`}>{pct(p.result_pct)}</span>
+                        </>
+                      )}
+                    </td>
+                    <td className="num income" data-label="Proventos">{brl(p.income)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <FixedIncomeCard />
     </div>
   )
 }

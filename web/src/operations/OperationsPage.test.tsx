@@ -148,3 +148,60 @@ test('a refused delete explains why', async () => {
   )
   vi.restoreAllMocks()
 })
+
+test("the price fills in with the ticker's close on the operation's day", async () => {
+  const api = fakeApi({
+    'GET /prices/VALE3': { body: { ticker: 'VALE3', date: '2026-03-06', price: '61.40', source: 'CLOSE' } },
+    'POST /operations': { status: 201, body: operation() },
+  })
+  const onClose = vi.fn()
+  renderWithApp(<OperationForm onClose={onClose} />)
+  const user = userEvent.setup()
+
+  await user.clear(screen.getByLabelText('Data'))
+  await user.type(screen.getByLabelText('Data'), '2026-03-08') // a Sunday: Friday's close
+  await user.type(screen.getByLabelText('Ticker'), 'vale3')
+
+  expect(await screen.findByDisplayValue('61,40')).toBe(screen.getByLabelText(/^Preço unitário/))
+  expect(screen.getByText('Fechamento de 06/03/2026.')).toBeInTheDocument()
+  const asked = api.requests.find((r) => r.url.includes('/prices/'))!
+  expect(new URL(asked.url).searchParams.get('date')).toBe('2026-03-08')
+
+  await user.type(screen.getByLabelText('Quantidade'), '10')
+  await user.click(screen.getByRole('button', { name: 'Registrar' }))
+  await vi.waitFor(() => expect(onClose).toHaveBeenCalled())
+  expect((await api.sent('POST /operations'))[0].price).toBe('61.40')
+})
+
+test('a typed price wins over the suggestion, which can be brought back', async () => {
+  fakeApi({ 'GET /prices/PETR4': { body: { ticker: 'PETR4', date: '2026-11-14', price: '38.00', source: 'QUOTE' } } })
+  renderWithApp(<OperationForm onClose={() => {}} />)
+  const user = userEvent.setup()
+
+  await user.type(screen.getByLabelText('Ticker'), 'PETR4')
+  const price = screen.getByLabelText(/^Preço unitário/)
+  await vi.waitFor(() => expect(price).toHaveValue('38,00'))
+  expect(screen.getByText('Cotação atual. Confira o preço pago.')).toBeInTheDocument()
+
+  await user.clear(price)
+  await user.type(price, '37,9')
+  expect(price).toHaveValue('37,9')
+  await user.click(screen.getByRole('button', { name: 'Usar a cotação da data' }))
+  expect(price).toHaveValue('38,00')
+})
+
+test('without a price for that day, the user is asked to type it', async () => {
+  fakeApi({ 'GET /prices/XPTO3': { status: 404, body: { detail: { code: 'PRICE_NOT_FOUND', message: 'x' } } } })
+  renderWithApp(<OperationForm onClose={() => {}} />)
+  await userEvent.type(screen.getByLabelText('Ticker'), 'XPTO3')
+  expect(await screen.findByText('Sem cotação para essa data: digite o preço.')).toBeInTheDocument()
+  expect(screen.getByLabelText(/^Preço unitário/)).toHaveValue('')
+})
+
+test('editing keeps the price the operation was made at', async () => {
+  const api = fakeApi({})
+  renderWithApp(<OperationForm operation={operation()} onClose={() => {}} />)
+  expect(screen.getByLabelText(/^Preço unitário/)).toHaveValue('30')
+  await new Promise((r) => setTimeout(r, 500)) // past the debounce
+  expect(api.requests).toHaveLength(0)
+})

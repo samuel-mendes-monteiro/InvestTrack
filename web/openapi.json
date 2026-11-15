@@ -1381,6 +1381,40 @@
         "title": "PositionOut",
         "type": "object"
       },
+      "PriceOut": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "source": {
+            "description": "QUOTE: current price (brapi); CLOSE: official B3 close of that day",
+            "enum": [
+              "QUOTE",
+              "CLOSE"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "date",
+          "price",
+          "source"
+        ],
+        "title": "PriceOut",
+        "type": "object"
+      },
       "Product": {
         "enum": [
           "CDB",
@@ -2716,6 +2750,77 @@
           }
         },
         "summary": "Get Portfolio",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/api/prices/{ticker}": {
+      "get": {
+        "description": "Price of a ticker on a day, to fill in a new operation.\n\nToday (or no date): the current quote. An earlier day: B3's official\nclose, or the last one before it on a weekend or holiday. Closes come\nfrom the history the performance page downloads, which starts at the\nfirst operation, so an older day may have none (404).",
+        "operationId": "price_on_api_prices__ticker__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9]{4,12}$",
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "No price known for that day"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Price On",
         "tags": [
           "portfolio"
         ]

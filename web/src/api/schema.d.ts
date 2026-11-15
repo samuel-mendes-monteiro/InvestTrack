@@ -390,6 +390,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/prices/{ticker}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Price On
+         * @description Price of a ticker on a day, to fill in a new operation.
+         *
+         *     Today (or no date): the current quote. An earlier day: B3's official
+         *     close, or the last one before it on a weekend or holiday. Closes come
+         *     from the history the performance page downloads, which starts at the
+         *     first operation, so an older day may have none (404).
+         */
+        get: operations["price_on_api_prices__ticker__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stock-events": {
         parameters: {
             query?: never;
@@ -981,6 +1006,24 @@ export interface components {
             result: string | null;
             /** Result Pct */
             result_pct: string | null;
+            /** Ticker */
+            ticker: string;
+        };
+        /** PriceOut */
+        PriceOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Price */
+            price: string;
+            /**
+             * Source
+             * @description QUOTE: current price (brapi); CLOSE: official B3 close of that day
+             * @enum {string}
+             */
+            source: "QUOTE" | "CLOSE";
             /** Ticker */
             ticker: string;
         };
@@ -1941,6 +1984,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PortfolioOut"];
+                };
+            };
+        };
+    };
+    price_on_api_prices__ticker__get: {
+        parameters: {
+            query?: {
+                date?: string | null;
+            };
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceOut"];
+                };
+            };
+            /** @description No price known for that day */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

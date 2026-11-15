@@ -4,7 +4,8 @@ import { expect, test, vi } from 'vitest'
 import { fakeApi } from '../test/fakeApi'
 import { renderWithApp } from '../test/render'
 import { fixedIncome } from '../test/samples'
-import { FixedIncomePage } from './FixedIncomePage'
+import { NewOperationDialog } from '../operations/NewOperationDialog'
+import { FixedIncomeCard } from './FixedIncomeCard'
 
 const LCI = fixedIncome({
   id: 2,
@@ -24,12 +25,12 @@ const LCI = fixedIncome({
 const OLD = fixedIncome({ id: 3, name: 'CDB antigo', status: 'REDEEMED', redeemed_on: '2026-03-01', principal: '999.00' })
 
 function metric(label: string) {
-  return screen.getByText(label, { selector: '.metric-label' }).parentElement!
+  return screen.getByText(label, { selector: 'dt' }).parentElement!
 }
 
 test('totals count only active investments, exactly', async () => {
   fakeApi({ 'GET /fixed-income': { body: [fixedIncome(), LCI, OLD] } })
-  renderWithApp(<FixedIncomePage />)
+  renderWithApp(<FixedIncomeCard />)
 
   expect(await screen.findByRole('table', { name: 'Aplicações' })).toBeInTheDocument()
   expect(metric('Aplicado')).toHaveTextContent('R$ 7.000,00')
@@ -39,17 +40,17 @@ test('totals count only active investments, exactly', async () => {
 
   const lci = screen.getByRole('row', { name: /LCI Banco Y/ })
   expect(lci).toHaveTextContent('IPCA + 6,5% a.a.')
-  expect(lci).toHaveTextContent('R$ 1.000,00') // partial redemptions
   expect(screen.getByRole('row', { name: /CDB antigo/ })).toHaveTextContent('Resgatado')
 })
 
-test('a new investment is sent with exact decimals', async () => {
-  const api = fakeApi({ 'GET /fixed-income': { body: [] }, 'POST /fixed-income': { status: 201, body: fixedIncome() } })
-  renderWithApp(<FixedIncomePage />)
+test('a new investment comes from the "Nova operação" dialog, with exact decimals', async () => {
+  const api = fakeApi({ 'POST /fixed-income': { status: 201, body: fixedIncome() } })
+  const onClose = vi.fn()
+  renderWithApp(<NewOperationDialog onClose={onClose} />)
   const user = userEvent.setup()
 
-  await user.click(await screen.findByRole('button', { name: 'Nova aplicação' }))
-  const dialog = screen.getByRole('dialog')
+  const dialog = screen.getByRole('dialog', { name: 'Nova operação' })
+  await user.click(within(dialog).getByRole('button', { name: 'Renda fixa' }))
   await user.type(within(dialog).getByLabelText('Nome'), 'LCA Banco Z')
   await user.selectOptions(within(dialog).getByLabelText(/Produto/), 'LCA')
   expect(within(dialog).getByText('LCA é isenta de IR e IOF.')).toBeInTheDocument()
@@ -62,10 +63,17 @@ test('a new investment is sent with exact decimals', async () => {
   }
   await user.click(within(dialog).getByRole('button', { name: 'Registrar' }))
 
-  await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await vi.waitFor(() => expect(onClose).toHaveBeenCalled())
   expect(await api.sent('POST /fixed-income')).toEqual([
     { name: 'LCA Banco Z', product: 'LCA', indexer: 'PRE', rate: '12.5', start: '2026-01-05', maturity: '2028-01-05', amount: '5000.00' },
   ])
+})
+
+test('without investments the card shows nothing', async () => {
+  const api = fakeApi({ 'GET /fixed-income': { body: [] } })
+  const { container } = renderWithApp(<FixedIncomeCard />)
+  await vi.waitFor(() => expect(api.requests).toHaveLength(1))
+  await vi.waitFor(() => expect(container).toBeEmptyDOMElement())
 })
 
 test('a partial redemption too large shows the value on that day', async () => {
@@ -76,7 +84,7 @@ test('a partial redemption too large shows the value on that day', async () => {
       body: { detail: { code: 'REDEMPTION_TOO_LARGE', message: 'x', date: '2026-06-01', available: '5200.50' } },
     },
   })
-  renderWithApp(<FixedIncomePage />)
+  renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
   await user.click(await screen.findByRole('button', { name: 'Resgatar ou apagar CDB Banco X' }))
@@ -100,7 +108,7 @@ test('the dialog follows the refetched investment after a change', async () => {
       return { body: fixedIncome() }
     },
   })
-  renderWithApp(<FixedIncomePage />)
+  renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
   await user.click(await screen.findByRole('button', { name: 'Resgatar ou apagar CDB Banco X' }))
@@ -119,7 +127,7 @@ test('partial redemptions can be deleted from the dialog', async () => {
     'GET /fixed-income': { body: [LCI] },
     'DELETE /fixed-income/2/partial-redemptions/9': { body: LCI },
   })
-  renderWithApp(<FixedIncomePage />)
+  renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
   await user.click(await screen.findByRole('button', { name: 'Resgatar ou apagar LCI Banco Y' }))
@@ -130,7 +138,7 @@ test('partial redemptions can be deleted from the dialog', async () => {
 test('deleting an investment asks first and closes the dialog', async () => {
   fakeApi({ 'GET /fixed-income': { body: [fixedIncome()] }, 'DELETE /fixed-income/1': { status: 204 } })
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-  renderWithApp(<FixedIncomePage />)
+  renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
   await user.click(await screen.findByRole('button', { name: 'Resgatar ou apagar CDB Banco X' }))
@@ -149,7 +157,7 @@ test('while the CDI is syncing, totals are unknown and the list refetches by its
       return { body: [calls === 1 ? fixedIncome({ as_of: null, gross: null, iof: null, ir: null, net: null, gross_return: null }) : fixedIncome()] }
     },
   })
-  renderWithApp(<FixedIncomePage />)
+  renderWithApp(<FixedIncomeCard />)
 
   expect(await screen.findByText(/Aguardando o histórico do CDI/)).toBeInTheDocument()
   expect(metric('Valor bruto')).toHaveTextContent('—')

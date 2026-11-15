@@ -622,6 +622,30 @@ def test_performance_against_benchmarks():
     }
 
 
+def test_price_today_is_the_current_quote():
+    with performance_client(HISTORY) as client:
+        body = client.get("/prices/petr4").json()
+    assert body == {
+        "ticker": "PETR4",
+        "date": date.today().isoformat(),
+        "price": "38.00",
+        "source": "QUOTE",
+    }
+
+
+def test_price_on_an_earlier_day_is_that_close_or_the_one_before():
+    with performance_client(HISTORY) as client:
+        on_tuesday = client.get("/prices/PETR4", params={"date": TUE.isoformat()}).json()
+        weekend = TUE + timedelta(days=4)  # Saturday: Tuesday's is the last close
+        saturday = client.get("/prices/PETR4", params={"date": weekend.isoformat()}).json()
+        unknown = client.get("/prices/VALE3", params={"date": TUE.isoformat()})
+        bad = client.get("/prices/PETR-4")
+    assert (on_tuesday["price"], on_tuesday["source"]) == ("11.00", "CLOSE")
+    assert (saturday["date"], saturday["price"]) == (TUE.isoformat(), "11.00")
+    assert (unknown.status_code, unknown.json()["detail"]["code"]) == (404, "PRICE_NOT_FOUND")
+    assert bad.status_code == 422
+
+
 LONG_HISTORY = StaticMarketData(
     closes={
         "PETR4": {

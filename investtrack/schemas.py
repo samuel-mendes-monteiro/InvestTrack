@@ -178,6 +178,15 @@ class PortfolioTotals(BaseModel):
     fixed_income: Money = Field(description="Net value of fixed income still invested")
 
 
+class PriceOut(BaseModel):
+    ticker: str
+    date: date  # the day the price is from: a close may be from before the day asked
+    price: Money
+    source: Literal["QUOTE", "CLOSE"] = Field(
+        description="QUOTE: current price (brapi); CLOSE: official B3 close of that day"
+    )
+
+
 class PortfolioOut(BaseModel):
     positions: list[PositionOut]
     totals: PortfolioTotals

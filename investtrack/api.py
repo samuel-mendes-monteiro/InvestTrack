@@ -28,6 +28,7 @@ from fastapi import (
     Response,
     status,
 )
+from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
@@ -96,6 +97,7 @@ from investtrack.schemas import (
     PortfolioOut,
     PortfolioTotals,
     PositionOut,
+    PriceOut,
     RedeemIn,
     SessionOut,
     SkippedRowOut,
@@ -731,6 +733,40 @@ def create_app(
             repository.delete_income(session, user.id, income_id)
         except repository.IncomeNotFoundError as e:
             raise api_error(404, "INCOME_NOT_FOUND", e) from e
+
+    @api.get(
+        "/prices/{ticker}",
+        tags=["portfolio"],
+        responses={404: {"model": ErrorOut, "description": "No price known for that day"}},
+    )
+    def price_on(
+        ticker: Annotated[str, PathParam(pattern=r"^[A-Za-z0-9]{4,12}$")],
+        user: UserDep,
+        prices: PricesDep,
+        market: MarketDep,
+        day: Annotated[date | None, Query(alias="date")] = None,
+    ) -> PriceOut:
+        """Price of a ticker on a day, to fill in a new operation.
+
+        Today (or no date): the current quote. An earlier day: B3's official
+        close, or the last one before it on a weekend or holiday. Closes come
+        from the history the performance page downloads, which starts at the
+        first operation, so an older day may have none (404).
+        """
+        ticker = ticker.upper()
+        today = date.today()
+        day = min(day or today, today)
+        if day == today:
+            quote = prices.get_quote(ticker)
+            if quote is not None:
+                return PriceOut(ticker=ticker, date=today, price=quote.price, source="QUOTE")
+        # A week back covers any weekend plus a holiday.
+        closes = market.closes({ticker}, day - timedelta(days=7)).get(ticker, {})
+        known = [d for d in closes if d <= day]
+        if not known:
+            raise api_error(404, "PRICE_NOT_FOUND", LookupError(f"no price for {ticker} on {day}"))
+        last = max(known)
+        return PriceOut(ticker=ticker, date=last, price=closes[last], source="CLOSE")
 
     @api.get("/portfolio", tags=["portfolio"])
     def get_portfolio(

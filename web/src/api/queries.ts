@@ -123,6 +123,24 @@ export function useDeleteBonusCost() {
 export type FixedIncome = Schemas['FixedIncomeOut']
 export type FixedIncomeInput = Schemas['FixedIncomeCreate']
 
+const TICKER = /^[A-Z0-9]{4,12}$/
+
+/**
+ * Price of `ticker` on `day`, to suggest in a new operation: the current
+ * quote for today, B3's close for an earlier day. Asks only for something
+ * shaped like a ticker; a 404 (no price known) is an answer, not an error to retry.
+ */
+export function usePriceOn(ticker: string, day: string) {
+  return useQuery({
+    queryKey: ['price', ticker, day],
+    queryFn: () =>
+      call(api.GET('/api/prices/{ticker}', { params: { path: { ticker }, query: { date: day } } })),
+    enabled: TICKER.test(ticker) && day !== '',
+    retry: false,
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function useFixedIncome() {
   return useQuery({
     queryKey: ['fixed-income'],

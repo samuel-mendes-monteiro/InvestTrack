@@ -6,9 +6,9 @@ import { useMe } from './api/queries'
 import { ApiError } from './api/errors'
 import { markLoggedIn, markLoggedOut, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
-import { BankIcon, ChartIcon, CoinsIcon, ListIcon, LogoMark, PlusIcon, WalletIcon } from './components/Icons'
+import { ChartIcon, CoinsIcon, ListIcon, LogoMark, PlusIcon, WalletIcon } from './components/Icons'
 import { LandingPage } from './landing/LandingPage'
-import { OperationForm } from './operations/OperationForm'
+import { NewOperationDialog } from './operations/NewOperationDialog'
 
 // Each page is its own chunk, downloaded the first time it's opened: the login
 // screen doesn't wait for the charting library, and a page's code only loads
@@ -18,7 +18,6 @@ const PerformancePage = lazy(() => import('./performance/PerformancePage').then(
 const OperationsPage = lazy(() => import('./operations/OperationsPage').then((m) => ({ default: m.OperationsPage })))
 const IncomePage = lazy(() => import('./income/IncomePage').then((m) => ({ default: m.IncomePage })))
 const ProfilePage = lazy(() => import('./profile/ProfilePage').then((m) => ({ default: m.ProfilePage })))
-const FixedIncomePage = lazy(() => import('./fixed-income/FixedIncomePage').then((m) => ({ default: m.FixedIncomePage })))
 
 export default function App() {
   const { status, notice, generation } = useSession()
@@ -87,7 +86,6 @@ const PAGES = [
   { path: '/rentabilidade', label: 'Rentabilidade', icon: <ChartIcon />, element: <PerformancePage /> },
   { path: '/operacoes', label: 'Operações', icon: <ListIcon />, element: <OperationsPage /> },
   { path: '/proventos', label: 'Proventos', icon: <CoinsIcon />, element: <IncomePage /> },
-  { path: '/renda-fixa', label: 'Renda fixa', icon: <BankIcon />, element: <FixedIncomePage /> },
 ]
 
 /** Everything behind the login. */
@@ -156,7 +154,7 @@ function Shell() {
           </Routes>
         </Suspense>
       </main>
-      {creating && <OperationForm onClose={() => setCreating(false)} />}
+      {creating && <NewOperationDialog onClose={() => setCreating(false)} />}
     </>
   )
 }

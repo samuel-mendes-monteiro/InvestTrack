@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { useCreateFixedIncome, type FixedIncomeInput, type Schemas } from '../api/queries'
-import { Modal } from '../components/Modal'
 import { decimalField, todayIso } from '../format'
 import { FI_INDEXERS, FI_PRODUCTS } from '../labels'
 
@@ -15,6 +14,7 @@ function nextYear(iso: string): string {
   return `${Number(iso.slice(0, 4)) + 1}${iso.slice(4)}`.replace('-02-29', '-02-28')
 }
 
+/** A new fixed income investment: the form inside NewOperationDialog. */
 export function FixedIncomeForm({ onClose }: { onClose: () => void }) {
   const today = todayIso()
   const [name, setName] = useState('')
@@ -52,65 +52,63 @@ export function FixedIncomeForm({ onClose }: { onClose: () => void }) {
   const error = invalid ?? (create.isError ? create.error.message : null)
 
   return (
-    <Modal title="Nova aplicação" onClose={onClose}>
-      <form onSubmit={submit} className="stack">
-        <div className="grid2">
-          <label>
-            Nome
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="CDB Banco X" />
+    <form onSubmit={submit} className="stack">
+      <div className="grid2">
+        <label>
+          Nome
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="CDB Banco X" />
+        </label>
+        <label>
+          Produto
+          <select value={product} onChange={(e) => setProduct(e.target.value as Schemas['Product'])}>
+            {FI_PRODUCTS.map((p) => (
+              <option key={p}>{p}</option>
+            ))}
+          </select>
+          {product !== 'CDB' && <small>{product} é isenta de IR e IOF.</small>}
+        </label>
+      </div>
+      <fieldset className="segmented">
+        <legend>Indexador</legend>
+        {(Object.keys(FI_INDEXERS) as Schemas['Indexer'][]).map((i) => (
+          <label key={i}>
+            <input type="radio" name="indexer" checked={indexer === i} onChange={() => setIndexer(i)} />
+            {FI_INDEXERS[i]}
           </label>
-          <label>
-            Produto
-            <select value={product} onChange={(e) => setProduct(e.target.value as Schemas['Product'])}>
-              {FI_PRODUCTS.map((p) => (
-                <option key={p}>{p}</option>
-              ))}
-            </select>
-            {product !== 'CDB' && <small>{product} é isenta de IR e IOF.</small>}
-          </label>
-        </div>
-        <fieldset className="segmented">
-          <legend>Indexador</legend>
-          {(Object.keys(FI_INDEXERS) as Schemas['Indexer'][]).map((i) => (
-            <label key={i}>
-              <input type="radio" name="indexer" checked={indexer === i} onChange={() => setIndexer(i)} />
-              {FI_INDEXERS[i]}
-            </label>
-          ))}
-        </fieldset>
-        <div className="grid2">
-          <label>
-            Taxa (%)
-            <input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="110" />
-            <small>{RATE_HELP[indexer]}</small>
-          </label>
-          <label>
-            Valor aplicado (R$)
-            <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5.000,00" />
-          </label>
-          <label>
-            Data da aplicação
-            <input type="date" required max={today} value={start} onChange={(e) => setStart(e.target.value)} />
-          </label>
-          <label>
-            Vencimento
-            <input type="date" required min={start} value={maturity} onChange={(e) => setMaturity(e.target.value)} />
-          </label>
-        </div>
-        {error && (
-          <p className="alert error" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="actions">
-          <button type="button" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="submit" className="primary" disabled={create.isPending}>
-            Registrar
-          </button>
-        </div>
-      </form>
-    </Modal>
+        ))}
+      </fieldset>
+      <div className="grid2">
+        <label>
+          Taxa (%)
+          <input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="110" />
+          <small>{RATE_HELP[indexer]}</small>
+        </label>
+        <label>
+          Valor aplicado (R$)
+          <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5.000,00" />
+        </label>
+        <label>
+          Data da aplicação
+          <input type="date" required max={today} value={start} onChange={(e) => setStart(e.target.value)} />
+        </label>
+        <label>
+          Vencimento
+          <input type="date" required min={start} value={maturity} onChange={(e) => setMaturity(e.target.value)} />
+        </label>
+      </div>
+      {error && (
+        <p className="alert error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="actions">
+        <button type="button" onClick={onClose}>
+          Cancelar
+        </button>
+        <button type="submit" className="primary" disabled={create.isPending}>
+          Registrar
+        </button>
+      </div>
+    </form>
   )
 }
