@@ -62,7 +62,7 @@ export function PortfolioPage() {
               help="Dividendos, JCP e rendimentos já recebidos, descontado o IR retido."
             />
           </div>
-          <NetWorthChart />
+          <NetWorthChart current={netWorth} />
         </div>
 
         <section className="card" aria-labelledby="distribution-title">

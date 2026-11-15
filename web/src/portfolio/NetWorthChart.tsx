@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { usePerformance, type Period } from '../api/queries'
-import { brDate, brl, sumDecimals, toneOf } from '../format'
+import { brDate, brl, sumDecimals, todayIso, toneOf } from '../format'
 import { PERIODS } from '../labels'
 
 // Axis labels only ("R$ 12 mil"): rounded on purpose, the tooltip has the exact value.
@@ -20,8 +20,12 @@ function negate(value: string): string {
  * Net worth (stocks, FIIs, ETFs and fixed income) at each official close, from
  * the same history the Rentabilidade page uses. Unlike the return there, this
  * line goes up with every deposit too: it is how much there is, not how well it did.
+ *
+ * `current` is the net worth right now, the Patrimônio card's number. The
+ * history stops at B3's last official close, so a sale or redemption made
+ * today (or on a weekend) wouldn't show yet: it becomes the last point.
  */
-export function NetWorthChart() {
+export function NetWorthChart({ current }: { current: string | null }) {
   // Its own period, not the URL's: the Carteira has no ?periodo of its own.
   const [period, setPeriod] = useState<Period>('ALL')
   const performance = usePerformance(period)
@@ -40,12 +44,20 @@ export function NetWorthChart() {
           ))}
         </div>
       </div>
-      <NetWorthBody performance={performance} gradient={gradient} />
+      <NetWorthBody performance={performance} gradient={gradient} current={current} />
     </section>
   )
 }
 
-function NetWorthBody({ performance, gradient }: { performance: ReturnType<typeof usePerformance>; gradient: string }) {
+function NetWorthBody({
+  performance,
+  gradient,
+  current,
+}: {
+  performance: ReturnType<typeof usePerformance>
+  gradient: string
+  current: string | null
+}) {
   if (performance.isPending) return <p className="muted">Carregando o histórico…</p>
   if (performance.isError) return <p className="muted">Não foi possível carregar o histórico do patrimônio.</p>
 
@@ -58,12 +70,19 @@ function NetWorthBody({ performance, gradient }: { performance: ReturnType<typeo
     )
   }
 
-  const first = points[0]
-  const last = points[points.length - 1]
-  // Exact, from the API's strings; only the line itself is drawn with Number().
-  const change = sumDecimals([last.net_worth, negate(first.net_worth)])
   // net_worth, not value: fixed income net of taxes, as the Patrimônio card counts it.
-  const data = points.map((p) => ({ date: p.date, size: Number(p.net_worth), exact: p.net_worth }))
+  const series = points.map((p) => ({ date: p.date, exact: p.net_worth, now: false }))
+  const today = todayIso()
+  // Unknown (a ticker without a quote) adds nothing: better a line that stops
+  // at the last close than one that ends on a wrong number.
+  if (current != null && series[series.length - 1].date < today) {
+    series.push({ date: today, exact: current, now: true })
+  }
+  const first = series[0]
+  const last = series[series.length - 1]
+  // Exact, from the API's strings; only the line itself is drawn with Number().
+  const change = sumDecimals([last.exact, negate(first.exact)])
+  const data = series.map((p) => ({ ...p, size: Number(p.exact) }))
 
   return (
     <>
@@ -73,7 +92,7 @@ function NetWorthBody({ performance, gradient }: { performance: ReturnType<typeo
           {brl(change)}
         </span>
         <span className="muted">
-          de {brDate(first.date)} a {brDate(last.date)}
+          de {brDate(first.date)} a {last.now ? 'hoje' : brDate(last.date)}
         </span>
       </p>
       <div className={`chart ${performance.isPlaceholderData ? 'chart-updating' : ''}`} aria-hidden="true">
@@ -105,7 +124,9 @@ function NetWorthBody({ performance, gradient }: { performance: ReturnType<typeo
             <Tooltip
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
               itemStyle={{ color: 'var(--text)' }}
-              labelFormatter={(d) => brDate(String(d))}
+              labelFormatter={(d, payload) =>
+                payload[0]?.payload.now ? `Hoje (cotação atual)` : `${brDate(String(d))} (fechamento)`
+              }
               formatter={(_v, _name, item) => [brl(item.payload.exact), 'Patrimônio']}
             />
             <Area
@@ -119,7 +140,10 @@ function NetWorthBody({ performance, gradient }: { performance: ReturnType<typeo
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <p className="chart-note">Variação do patrimônio no período, com aportes e resgates incluídos.</p>
+      <p className="chart-note">
+        Variação do patrimônio no período, com aportes, vendas e resgates incluídos. Cada ponto é um fechamento da B3; o
+        último é agora, com a cotação atual.
+      </p>
     </>
   )
 }
