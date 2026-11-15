@@ -49,6 +49,7 @@ export const SKIP_REASONS: Record<Schemas['SkippedRowOut']['reason'], string> = 
 
 // In button order, shortest first.
 export const PERIODS: { value: Schemas['Period']; label: string; name: string }[] = [
+  { value: '7D', label: '7D', name: 'Últimos 7 dias' },
   { value: '1M', label: '1M', name: 'Último mês' },
   { value: '6M', label: '6M', name: 'Últimos 6 meses' },
   { value: '1Y', label: '1A', name: 'Último ano' },

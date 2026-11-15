@@ -30,6 +30,13 @@ export const WalletIcon = () => (
   </Icon>
 )
 
+export const BarsIcon = () => (
+  <Icon>
+    <path d="M4 20h16" />
+    <path d="M7 16v-4M12 16V8M17 16V5" />
+  </Icon>
+)
+
 export const ChartIcon = () => (
   <Icon>
     <path d="M4 4v16h16" />

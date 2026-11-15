@@ -147,6 +147,13 @@ def test_window_starts_at_the_last_close_before_the_period():
     assert window_base(DAYS, Period.MONTH) == date(2026, 2, 2)
 
 
+def test_a_week_starts_at_the_close_seven_days_before():
+    week = [date(2026, 11, d) for d in (5, 6, 9, 10, 11, 12, 13)]  # Thu, Fri, Mon..Fri
+    assert window_base(week, Period.WEEK) == date(2026, 11, 6)  # 13/11 - 7 days
+    # A holiday on that day: the close before it.
+    assert window_base([d for d in week if d.day != 6], Period.WEEK) == date(2026, 11, 5)
+
+
 def test_window_longer_than_the_history_shows_everything():
     assert window_base(DAYS, Period.YEAR) is None
     assert window_base(DAYS, Period.ALL) is None

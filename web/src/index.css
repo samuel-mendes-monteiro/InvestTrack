@@ -258,9 +258,11 @@ h2 {
 }
 
 .metric-value {
-  font-size: 1.3rem;
+  /* Never "R$" on one line and the number on the next: a bit smaller on phones instead. */
+  font-size: clamp(1.05rem, 4.6vw, 1.3rem);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .metric-detail {
@@ -587,6 +589,13 @@ ul.small {
   .portfolio-top {
     grid-template-columns: minmax(0, 1fr) 340px;
     align-items: start;
+  }
+
+  /* The left column (numbers and the return chart) is the taller one: the
+     distribution follows the scroll instead of leaving a gap under it. */
+  .portfolio-top > section {
+    position: sticky;
+    top: 76px;
   }
 }
 
@@ -1393,4 +1402,20 @@ a.button:focus-visible {
 
 .page .chart-card .card-head h2 {
   margin: 0;
+}
+
+/* A link at the foot of a card, to the page with the details. */
+.card-link {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+}
+
+.card-link a {
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.card-link a:hover {
+  text-decoration: underline;
 }

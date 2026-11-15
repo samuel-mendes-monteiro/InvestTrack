@@ -25,8 +25,8 @@ function negate(value: string): string {
  * history stops at B3's last official close, so a sale or redemption made
  * today (or on a weekend) wouldn't show yet: it becomes the last point.
  */
-export function NetWorthChart({ current }: { current: string | null }) {
-  // Its own period, not the URL's: the Carteira has no ?periodo of its own.
+export function NetWorthChart({ current, height = 280 }: { current: string | null; height?: number }) {
+  // Its own period: unlike Rentabilidade, it isn't kept in the URL.
   const [period, setPeriod] = useState<Period>('ALL')
   const performance = usePerformance(period)
   // useId gives ":r1:", and a colon would end the url(#...) that points at the gradient.
@@ -44,7 +44,7 @@ export function NetWorthChart({ current }: { current: string | null }) {
           ))}
         </div>
       </div>
-      <NetWorthBody performance={performance} gradient={gradient} current={current} />
+      <NetWorthBody performance={performance} gradient={gradient} current={current} height={height} />
     </section>
   )
 }
@@ -53,10 +53,12 @@ function NetWorthBody({
   performance,
   gradient,
   current,
+  height,
 }: {
   performance: ReturnType<typeof usePerformance>
   gradient: string
   current: string | null
+  height: number
 }) {
   if (performance.isPending) return <p className="muted">Carregando o histórico…</p>
   if (performance.isError) return <p className="muted">Não foi possível carregar o histórico do patrimônio.</p>
@@ -96,7 +98,7 @@ function NetWorthBody({
         </span>
       </p>
       <div className={`chart ${performance.isPlaceholderData ? 'chart-updating' : ''}`} aria-hidden="true">
-        <ResponsiveContainer width="100%" height={210}>
+        <ResponsiveContainer width="100%" height={height}>
           <AreaChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">

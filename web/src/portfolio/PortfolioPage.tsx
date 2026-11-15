@@ -1,9 +1,10 @@
 import { usePortfolio } from '../api/queries'
 import { Metric } from '../components/Metric'
 import { FixedIncomeCard } from '../fixed-income/FixedIncomeCard'
-import { brl, isZero, localTime, pct, quantity, sumDecimals, toneOf } from '../format'
+import { brl, isZero, localTime, pct, quantity, toneOf } from '../format'
 import { Distribution, type Slice } from './Distribution'
-import { NetWorthChart } from './NetWorthChart'
+import { netWorth } from './netWorth'
+import { ReturnChart } from './ReturnChart'
 
 export function PortfolioPage() {
   const portfolio = usePortfolio()
@@ -19,8 +20,7 @@ export function PortfolioPage() {
     return <p className="muted">Nenhuma operação ainda. Registre a primeira compra ou aplicação em “Nova operação”.</p>
   }
 
-  // Totals add up exactly; null (some position without a quote) stays unknown.
-  const netWorth = totals.current_value == null ? null : sumDecimals([totals.current_value, totals.fixed_income])
+  const total = netWorth(totals)
   const missing = open.filter((p) => p.current_price == null).map((p) => p.ticker)
   const stale = open.filter((p) => p.price_stale)
   const slices: Slice[] = open.flatMap((p) => (p.current_value == null ? [] : [{ name: p.ticker, value: p.current_value }]))
@@ -33,7 +33,7 @@ export function PortfolioPage() {
           <Metric
             hero
             label="Patrimônio"
-            value={brl(netWorth)}
+            value={brl(total)}
             detail={`${brl(totals.current_value)} em ações, FIIs e ETFs · ${brl(totals.fixed_income)} em renda fixa`}
             help="Renda fixa pelo valor líquido."
           />
@@ -62,7 +62,7 @@ export function PortfolioPage() {
               help="Dividendos, JCP e rendimentos já recebidos, descontado o IR retido."
             />
           </div>
-          <NetWorthChart current={netWorth} />
+          <ReturnChart />
         </div>
 
         <section className="card" aria-labelledby="distribution-title">

@@ -941,7 +941,7 @@ export interface components {
          * Period
          * @enum {string}
          */
-        Period: "1M" | "6M" | "1Y" | "ALL";
+        Period: "7D" | "1M" | "6M" | "1Y" | "ALL";
         /** PortfolioOut */
         PortfolioOut: {
             /** Positions */

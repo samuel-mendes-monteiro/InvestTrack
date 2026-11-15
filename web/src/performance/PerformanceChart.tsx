@@ -13,8 +13,12 @@ const SERIES = [
 
 type Point = Schemas['PerformancePoint']
 
+// Axis labels only: whole numbers ("40%") over months, a decimal ("1,5%") over
+// a week, where whole numbers would repeat. The tooltip has the exact value.
+const axisPct = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
+
 /** Cumulative return of the portfolio against CDI and Ibovespa, in %. */
-export function PerformanceChart({ points }: { points: Point[] }) {
+export function PerformanceChart({ points, height = 280 }: { points: Point[]; height?: number }) {
   // useId gives ":r1:", and a colon would end the url(#...) that points at the gradient.
   const gradient = `twr-${useId().replace(/:/g, '')}`
   // Number() only for drawing; the tooltip shows the API's exact strings.
@@ -37,7 +41,7 @@ export function PerformanceChart({ points }: { points: Point[] }) {
         ))}
       </ul>
       <div className="chart" aria-hidden="true">
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={height}>
           <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
@@ -59,7 +63,7 @@ export function PerformanceChart({ points }: { points: Point[] }) {
               axisLine={false}
               stroke="var(--muted)"
               width={52}
-              tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+              tickFormatter={(v: number) => `${axisPct.format(v)}%`}
             />
             <Tooltip
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}

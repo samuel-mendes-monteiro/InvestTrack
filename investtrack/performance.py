@@ -21,7 +21,7 @@ import calendar
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
@@ -178,6 +178,7 @@ def index_return(values: dict[date, Decimal], days: list[date], start: date) -> 
 
 
 class Period(StrEnum):
+    WEEK = "7D"
     MONTH = "1M"
     SEMESTER = "6M"
     YEAR = "1Y"
@@ -201,7 +202,13 @@ def window_base(days: list[date], period: Period) -> date | None:
     shorter than the period, which then shows everything."""
     if period is Period.ALL or not days:
         return None
-    cutoff = months_before(max(days), _MONTHS[period])
+    last = max(days)
+    # A week is counted in calendar days: 7 days before Friday is the Friday
+    # before, whose close the week is measured from.
+    if period is Period.WEEK:
+        cutoff = last - timedelta(days=7)
+    else:
+        cutoff = months_before(last, _MONTHS[period])
     before = [d for d in days if d <= cutoff]
     return max(before) if before else None
 

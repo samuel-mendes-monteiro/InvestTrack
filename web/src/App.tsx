@@ -6,7 +6,7 @@ import { useMe } from './api/queries'
 import { ApiError } from './api/errors'
 import { markLoggedIn, markLoggedOut, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
-import { ChartIcon, CoinsIcon, ListIcon, LogoMark, PlusIcon, WalletIcon } from './components/Icons'
+import { BarsIcon, ChartIcon, CoinsIcon, ListIcon, LogoMark, PlusIcon, WalletIcon } from './components/Icons'
 import { LandingPage } from './landing/LandingPage'
 import { NewOperationDialog } from './operations/NewOperationDialog'
 
@@ -14,6 +14,7 @@ import { NewOperationDialog } from './operations/NewOperationDialog'
 // screen doesn't wait for the charting library, and a page's code only loads
 // for people who visit it.
 const PortfolioPage = lazy(() => import('./portfolio/PortfolioPage').then((m) => ({ default: m.PortfolioPage })))
+const NetWorthPage = lazy(() => import('./networth/NetWorthPage').then((m) => ({ default: m.NetWorthPage })))
 const PerformancePage = lazy(() => import('./performance/PerformancePage').then((m) => ({ default: m.PerformancePage })))
 const OperationsPage = lazy(() => import('./operations/OperationsPage').then((m) => ({ default: m.OperationsPage })))
 const IncomePage = lazy(() => import('./income/IncomePage').then((m) => ({ default: m.IncomePage })))
@@ -83,6 +84,7 @@ function SessionCheck() {
 // Each screen has its own URL, so reload, back/forward and bookmarks work.
 const PAGES = [
   { path: '/', label: 'Carteira', icon: <WalletIcon />, element: <PortfolioPage /> },
+  { path: '/patrimonio', label: 'Patrimônio', icon: <BarsIcon />, element: <NetWorthPage /> },
   { path: '/rentabilidade', label: 'Rentabilidade', icon: <ChartIcon />, element: <PerformancePage /> },
   { path: '/proventos', label: 'Proventos', icon: <CoinsIcon />, element: <IncomePage /> },
   { path: '/operacoes', label: 'Operações', icon: <ListIcon />, element: <OperationsPage /> },

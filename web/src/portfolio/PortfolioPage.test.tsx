@@ -84,30 +84,14 @@ test('an empty portfolio says how to start', async () => {
   expect(await screen.findByText(/Nenhuma operação ainda/)).toBeInTheDocument()
 })
 
-test('charts the net worth over time, ending now at the Patrimônio card', async () => {
+test('also charts the return, linking to the Rentabilidade page', async () => {
   fakeApi({
-    // Net worth now: 8000.00 + 500.00, after the last close (13/11) of the history.
-    'GET /portfolio': { body: portfolio([position()], { current_value: '8000.00', fixed_income: '500.00' }) },
+    'GET /portfolio': { body: portfolio([position()]) },
     'GET /performance': { body: performance() },
   })
   renderWithApp(<PortfolioPage />)
 
-  const chart = await screen.findByRole('region', { name: 'Evolução do patrimônio' })
-  // From the first close (net_worth 3000.00) to now: a sale or redemption made
-  // today, after B3's last close, already counts.
-  expect(await within(chart).findByText('+R$ 5.500,00')).toBeInTheDocument()
-  expect(chart).toHaveTextContent('de 05/01/2026 a hoje')
-})
-
-test('without a quote for every ticker, the chart stops at the last close', async () => {
-  fakeApi({
-    'GET /portfolio': { body: portfolio([position()], { current_value: null }) },
-    'GET /performance': { body: performance() },
-  })
-  renderWithApp(<PortfolioPage />)
-
-  const chart = await screen.findByRole('region', { name: 'Evolução do patrimônio' })
-  // net_worth (fixed income after taxes, like the Patrimônio card), not the gross value.
-  expect(await within(chart).findByText('+R$ 5.390,15')).toBeInTheDocument()
-  expect(chart).toHaveTextContent('de 05/01/2026 a 13/11/2026')
+  const chart = await screen.findByRole('region', { name: 'Rentabilidade acumulada' })
+  expect(within(chart).getByText('+48,82%', { selector: '.chart-figure' })).toBeInTheDocument()
+  expect(within(chart).getByRole('link', { name: /Ver CDI, Ibovespa/ })).toHaveAttribute('href', '/rentabilidade')
 })

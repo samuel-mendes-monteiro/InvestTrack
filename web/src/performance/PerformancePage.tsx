@@ -1,9 +1,9 @@
 import { useSearchParams } from 'react-router'
 import { usePerformance, type Period } from '../api/queries'
 import { Metric } from '../components/Metric'
-import { brDate, pct, toneOf, wholePct } from '../format'
+import { pct, toneOf, wholePct } from '../format'
 import { PERIODS } from '../labels'
-import { PerformanceChart } from './PerformanceChart'
+import { PerformanceCard } from './PerformanceCard'
 
 export function PerformancePage() {
   // The period lives in the URL (?periodo=6M): reload, back and links keep it.
@@ -33,39 +33,12 @@ export function PerformancePage() {
         !perf.syncing && <p className="muted">Registre uma compra para ver a rentabilidade.</p>
       ) : (
         <>
-          {/* The same frame as the Carteira's net worth chart: title and periods on top, a summary line, the chart. */}
-          <section className="card chart-card" aria-labelledby="twr-title">
-            <div className="card-head">
-              <h2 id="twr-title">Rentabilidade acumulada</h2>
-              <div className="segmented-buttons" role="group" aria-label="Período">
-                {PERIODS.map((p) => (
-                  <button
-                    key={p.value}
-                    aria-pressed={period === p.value}
-                    title={p.name}
-                    onClick={() => choose(p.value)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {perf.start && perf.as_of && (
-              <p className="chart-caption">
-                <span className={`chart-figure ${toneOf(perf.twr) ?? ''}`}>{pct(perf.twr)}</span>
-                <span className="muted">
-                  de {brDate(perf.start)} a {brDate(perf.as_of)}
-                </span>
-              </p>
-            )}
-            <div className={performance.isPlaceholderData ? 'chart-updating' : undefined}>
-              <PerformanceChart points={perf.points} />
-            </div>
-            <p className="chart-note">
-              Até o último fechamento oficial. Rentabilidade ponderada pelo tempo (TWR): aportes e vendas não distorcem o
-              resultado, e os proventos contam como retorno.
-            </p>
-          </section>
+          <PerformanceCard
+            perf={perf}
+            period={period}
+            onPeriod={choose}
+            updating={performance.isPlaceholderData}
+          />
 
           {/* Under the chart: the period's final numbers, once the curve shows how they got there. */}
           <div className="metrics">
