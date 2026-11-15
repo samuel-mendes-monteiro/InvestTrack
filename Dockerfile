@@ -27,7 +27,10 @@ COPY deploy/entrypoint.sh /entrypoint.sh
 
 # The server runs as an unprivileged user; the entrypoint (as root) only
 # hands it the data volume, which the host mounts owned by root.
-RUN useradd --system --no-create-home app && mkdir /data
+# With a home of its own: setpriv keeps root's HOME, and libpq then tries to
+# read a client certificate from /root/.postgresql, which fails with
+# "permission denied" instead of "no such file" on every SSL connection.
+RUN useradd --system --create-home --home-dir /home/app app && mkdir /data
 VOLUME /data
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
