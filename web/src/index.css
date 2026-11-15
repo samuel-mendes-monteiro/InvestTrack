@@ -566,14 +566,14 @@ ul.small {
 }
 
 .portfolio,
-.performance {
+.page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
 .portfolio .alert,
-.performance .alert {
+.page .alert {
   margin: 0;
 }
 
@@ -600,19 +600,19 @@ ul.small {
    chart sized to "100%" would then keep the whole column wide on phones. */
 .portfolio > *,
 .portfolio-top > *,
-.performance > *,
+.page > *,
 .chart-card {
   min-width: 0;
 }
 
 .portfolio .metrics,
-.performance .metrics {
+.page .metrics {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   margin: 0;
 }
 
 .portfolio .metric,
-.performance .metric {
+.page .metric {
   padding: 14px 16px;
   border-radius: 12px;
   background: var(--surface);
@@ -1370,4 +1370,27 @@ a.button:focus-visible {
 
 .fixed-income tbody th .chip {
   font-weight: 500;
+}
+
+/* A small "Ano" select in a card's head, beside the title like the period buttons. */
+.year-select {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.year-select select {
+  padding: 3px 8px;
+  font-size: 0.85rem;
+}
+
+.page .card > .table-wrap:last-child {
+  margin-bottom: -4px;
+}
+
+.page .card-head h2 {
+  margin: 0 0 12px;
+}
+
+.page .chart-card .card-head h2 {
+  margin: 0;
 }

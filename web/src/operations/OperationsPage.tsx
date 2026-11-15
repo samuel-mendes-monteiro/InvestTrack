@@ -87,17 +87,19 @@ export function OperationsPage() {
                 <td className="num">{quantity(o.quantity)}</td>
                 <td className="num">{brl(o.price)}</td>
                 <td className="num">{brl(o.fees)}</td>
-                <td className="row-actions">
-                  <button onClick={() => setEditing(o)} aria-label={`Editar operação #${o.id}`}>
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => confirmDelete(o)}
-                    disabled={remove.isPending}
-                    aria-label={`Apagar operação #${o.id}`}
-                  >
-                    Apagar
-                  </button>
+                <td>
+                  <div className="row-actions">
+                    <button onClick={() => setEditing(o)} aria-label={`Editar operação #${o.id}`}>
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => confirmDelete(o)}
+                      disabled={remove.isPending}
+                      aria-label={`Apagar operação #${o.id}`}
+                    >
+                      Apagar
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

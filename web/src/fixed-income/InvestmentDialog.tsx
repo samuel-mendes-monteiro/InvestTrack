@@ -93,17 +93,19 @@ export function InvestmentDialog({ investment: f, onClose }: { investment: Fixed
                     <td className="num">{brl(p.gross)}</td>
                     <td className="num">{p.ir == null || p.iof == null ? '—' : brl(sumDecimals([p.iof, p.ir]))}</td>
                     <td className="num">{brl(p.net)}</td>
-                    <td className="row-actions">
-                      <button
-                        disabled={busy}
-                        aria-label={`Apagar resgate parcial de ${brDate(p.date)}`}
-                        onClick={() => {
-                          reset()
-                          deletePartial.mutate({ id: f.id, redemptionId: p.id })
-                        }}
-                      >
-                        Apagar
-                      </button>
+                    <td>
+                      <div className="row-actions">
+                        <button
+                          disabled={busy}
+                          aria-label={`Apagar resgate parcial de ${brDate(p.date)}`}
+                          onClick={() => {
+                            reset()
+                            deletePartial.mutate({ id: f.id, redemptionId: p.id })
+                          }}
+                        >
+                          Apagar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

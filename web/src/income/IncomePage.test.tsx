@@ -34,13 +34,18 @@ test('splits pending and received, newest year first, with exact totals', async 
   routes()
   renderWithApp(<IncomePage />)
 
-  expect(await screen.findByRole('heading', { name: 'A receber · R$ 41,00' })).toBeInTheDocument()
+  const pending = await screen.findByRole('region', { name: 'A receber' })
+  expect(pending).toHaveTextContent('R$ 41,00')
   expect(within(screen.getByRole('table', { name: 'A receber' })).getAllByRole('row')).toHaveLength(3)
 
   const received = screen.getByRole('table', { name: 'Recebidos' })
   expect(within(received).getAllByRole('row')).toHaveLength(3) // header + the two from 2026
-  expect(metric('Recebido no ano (líquido)')).toHaveTextContent('R$ 52,12')
+  expect(screen.getByRole('heading', { name: 'Recebidos em 2026' })).toBeInTheDocument()
+  // The year's net total is the chart's big number.
+  const chart = screen.getByRole('region', { name: 'Proventos recebidos' })
+  expect(within(chart).getByText('R$ 52,12', { selector: '.chart-figure' })).toBeInTheDocument()
   expect(metric('IR retido no ano')).toHaveTextContent('R$ 3,00')
+  expect(metric('A receber')).toHaveTextContent('R$ 41,00')
   expect(await screen.findByText('R$ 26,06')).toBeInTheDocument() // 52.12 / 2 months
 })
 
@@ -49,7 +54,8 @@ test('choosing another year asks the API for its months', async () => {
   renderWithApp(<IncomePage />)
   await userEvent.selectOptions(await screen.findByLabelText('Ano'), '2025')
 
-  expect(metric('Recebido no ano (líquido)')).toHaveTextContent('R$ 85,00')
+  expect(screen.getByText('R$ 85,00', { selector: '.chart-figure' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Recebidos em 2025' })).toBeInTheDocument()
   await vi.waitFor(() =>
     expect(api.requests.map((r) => new URL(r.url).search)).toContain('?year=2025'),
   )

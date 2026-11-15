@@ -21,7 +21,7 @@ export function PerformancePage() {
   const perf = performance.data
 
   return (
-    <div className="performance">
+    <div className="page">
       {perf.syncing && (
         <p className="alert warning" role="status">
           Baixando o histórico de cotações da B3, do Ibovespa e do CDI. Na primeira vez leva cerca de um minuto; depois,

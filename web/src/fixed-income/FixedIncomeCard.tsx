@@ -93,10 +93,12 @@ export function FixedIncomeCard() {
                 <td className="num">{brl(f.gross)}</td>
                 <td className="num">{brl(f.net)}</td>
                 <td className={`num ${toneOf(f.gross_return) ?? ''}`}>{pct(f.gross_return)}</td>
-                <td className="row-actions">
-                  <button onClick={() => setOpenId(f.id)} aria-label={`Resgatar ou apagar ${f.name}`}>
-                    Resgatar…
-                  </button>
+                <td>
+                  <div className="row-actions">
+                    <button onClick={() => setOpenId(f.id)} aria-label={`Resgatar ou apagar ${f.name}`}>
+                      Resgatar…
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

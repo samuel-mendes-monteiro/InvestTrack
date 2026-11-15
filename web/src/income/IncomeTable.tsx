@@ -51,12 +51,14 @@ export function IncomeTable({
               <td className="num">{brl(i.net)}</td>
               <td>{i.source === 'B3' ? 'B3' : 'Manual'}</td>
               {onDelete && (
-                <td className="row-actions">
-                  {i.source === 'MANUAL' && i.id != null && (
-                    <button onClick={() => onDelete(i)} disabled={deleting} aria-label={`Apagar provento #${i.id}`}>
-                      Apagar
-                    </button>
-                  )}
+                <td>
+                  <div className="row-actions">
+                    {i.source === 'MANUAL' && i.id != null && (
+                      <button onClick={() => onDelete(i)} disabled={deleting} aria-label={`Apagar provento #${i.id}`}>
+                        Apagar
+                      </button>
+                    )}
+                  </div>
                 </td>
               )}
             </tr>

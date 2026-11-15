@@ -60,12 +60,14 @@ export function StockEvents() {
                   <td className={`num ${bonus && e.unit_cost == null ? 'negative' : ''}`}>
                     {!bonus ? '' : e.unit_cost == null ? 'não informado' : perShare(e.unit_cost)}
                   </td>
-                  <td className="row-actions">
-                    {bonus && (
-                      <button onClick={() => setEditing(e)} aria-label={`Custo atribuído de ${bonusLabel(e)}`}>
-                        {e.unit_cost == null ? 'Informar custo' : 'Alterar custo'}
-                      </button>
-                    )}
+                  <td>
+                    <div className="row-actions">
+                      {bonus && (
+                        <button onClick={() => setEditing(e)} aria-label={`Custo atribuído de ${bonusLabel(e)}`}>
+                          {e.unit_cost == null ? 'Informar custo' : 'Alterar custo'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )
