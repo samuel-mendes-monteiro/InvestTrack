@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from investtrack.history import (
+from investtrack.sources.history import (
     CotahistClient,
     HistoryUnavailableError,
     NotPublishedError,

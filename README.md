@@ -64,28 +64,36 @@ flowchart LR
     Market --> DB
 ```
 
-| Module | Responsibility |
-|---|---|
-| [`investtrack/portfolio.py`](investtrack/portfolio.py) | Average cost, realized and unrealized profit. Pure functions: no database, no HTTP |
-| [`investtrack/income.py`](investtrack/income.py) | Income (dividends, JCP, FII distributions): computed from events and trades, monthly totals. Also pure |
-| [`investtrack/events.py`](investtrack/events.py) | Stores B3 events (income, splits, bonus shares), synced once a day, with fallback to what is stored |
-| [`investtrack/b3.py`](investtrack/b3.py) | The only module that knows B3's corporate events URLs and JSON format |
-| [`investtrack/b3_statement.py`](investtrack/b3_statement.py) | Reads B3's trade statement (Excel); the only module that knows its format |
-| [`investtrack/statement_import.py`](investtrack/statement_import.py) | Decides which statement rows are new, already registered or invalid. Pure |
-| [`investtrack/performance.py`](investtrack/performance.py) | Time-weighted return and benchmarks (CDI, Ibovespa). Pure |
-| [`investtrack/fixed_income.py`](investtrack/fixed_income.py) | CDB, LCI and LCA: value from the CDI or a fixed rate, IOF and income tax. Pure |
-| [`investtrack/market_data.py`](investtrack/market_data.py) | Stores daily prices, Ibovespa and CDI; downloads only what is missing, in the background |
-| [`investtrack/history.py`](investtrack/history.py) | Clients and parsers for COTAHIST files, the Ibovespa table and the CDI series |
-| [`investtrack/repository.py`](investtrack/repository.py) | Saves and reads each user's data; validates every change through the calculation core |
-| [`investtrack/api.py`](investtrack/api.py) | Thin HTTP layer: converts JSON, checks the session, calls the repository, maps errors to status codes |
-| [`investtrack/auth.py`](investtrack/auth.py) | Accounts, Argon2id password hashes and session tokens |
-| [`investtrack/migrations/`](investtrack/migrations) | Alembic migrations, applied automatically when the API starts |
-| [`investtrack/prices.py`](investtrack/prices.py) | Quote cache with fallback to the last known price |
-| [`investtrack/brapi.py`](investtrack/brapi.py) | The only module that knows brapi's URL and JSON format |
-| [`investtrack/openapi.py`](investtrack/openapi.py) | Exports the API's OpenAPI schema, which the frontend's types are generated from |
-| [`web/src/api/`](web/src/api) | Typed API client: session token, error codes translated into Portuguese, one hook per endpoint |
-| [`web/src/format.ts`](web/src/format.ts) | Brazilian formatting of the API's decimal strings, exact (BigInt), never through a float |
-| [`web/src/`](web/src) | One folder per screen: `portfolio` (Carteira, with the fixed income card), `networth` (Patrimônio), `performance` (Rentabilidade), `income`, `operations`, `profile`, `landing`, `help` |
+The backend is split into layers, and imports only point downwards: `core` uses nothing else from the project, `sources` turn outside data into `core`'s types, `storage` uses both, and `api` uses everything. The calculation rules therefore run, and are tested, without a database or a network. [`tests/test_architecture.py`](tests/test_architecture.py) fails on an import in the wrong direction.
+
+| Layer | Module | Responsibility |
+|---|---|---|
+| **api** | [`api/app.py`](investtrack/api/app.py) | Builds the app: data sources on `app.state`, routers under `/api`, the built web app on every other path |
+| | [`api/routes/`](investtrack/api/routes) | One router per resource (`auth`, `operations`, `income`, `portfolio`, `fixed_income`, `imports`, `performance`). Thin: JSON in, repository call, errors to status codes |
+| | [`api/deps.py`](investtrack/api/deps.py) | Dependencies: database session, logged-in user from the session cookie, data sources, uploaded file |
+| | [`api/errors.py`](investtrack/api/errors.py) | Domain errors as HTTP errors with stable codes and their extra fields |
+| | [`api/schemas.py`](investtrack/api/schemas.py) | Request and response models (Pydantic); money as strings |
+| | [`api/views.py`](investtrack/api/views.py) | Domain objects into responses, and the reads several routes share |
+| **core** | [`core/portfolio.py`](investtrack/core/portfolio.py) | Average cost, realized and unrealized profit, stock events. Pure functions: no database, no HTTP |
+| | [`core/income.py`](investtrack/core/income.py) | Income (dividends, JCP, FII distributions): computed from events and trades, monthly totals |
+| | [`core/performance.py`](investtrack/core/performance.py) | Time-weighted return and benchmarks (CDI, Ibovespa) |
+| | [`core/fixed_income.py`](investtrack/core/fixed_income.py) | CDB, LCI and LCA: value from the CDI, a fixed rate or IPCA+, IOF and income tax |
+| | [`core/statement_import.py`](investtrack/core/statement_import.py) | Decides which statement rows are new, already registered or invalid |
+| **sources** | [`sources/b3.py`](investtrack/sources/b3.py) | The only module that knows B3's corporate events URLs and JSON format |
+| | [`sources/b3_statement.py`](investtrack/sources/b3_statement.py) | Reads B3's trade statement (Excel); the only module that knows its format |
+| | [`sources/brapi.py`](investtrack/sources/brapi.py) | The only module that knows brapi's URL and JSON format |
+| | [`sources/history.py`](investtrack/sources/history.py) | Clients and parsers for COTAHIST files, the Ibovespa table and the CDI and IPCA series |
+| **storage** | [`storage/models.py`](investtrack/storage/models.py), [`db.py`](investtrack/storage/db.py) | Tables (SQLAlchemy), exact decimals on SQLite, engine and migrations on startup |
+| | [`storage/repository.py`](investtrack/storage/repository.py) | Saves and reads each user's data; validates every change through the calculation core |
+| | [`storage/events.py`](investtrack/storage/events.py) | Stores B3 events (income, splits, bonus shares), synced once a day, with fallback to what is stored |
+| | [`storage/market_data.py`](investtrack/storage/market_data.py) | Stores daily prices, Ibovespa, CDI and IPCA; downloads only what is missing, in the background |
+| | [`storage/prices.py`](investtrack/storage/prices.py) | Quote cache with fallback to the last known price |
+| | [`storage/migrations/`](investtrack/storage/migrations) | Alembic migrations, applied automatically when the API starts |
+| **top level** | [`auth.py`](investtrack/auth.py) | Accounts, Argon2id password hashes, session tokens and the login limit |
+| | [`openapi.py`](investtrack/openapi.py) | Exports the API's OpenAPI schema, which the frontend's types are generated from |
+| **web** | [`web/src/api/`](web/src/api) | Typed API client: session, error codes translated into Portuguese, one hook per endpoint |
+| | [`web/src/format.ts`](web/src/format.ts) | Brazilian formatting of the API's decimal strings, exact (BigInt), never through a float |
+| | [`web/src/`](web/src) | One folder per screen: `portfolio` (Carteira, with the fixed income card), `networth` (Patrimônio), `performance` (Rentabilidade), `income`, `operations`, `profile`, `landing`, `help` |
 
 ## Calculation rules
 

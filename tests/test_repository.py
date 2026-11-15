@@ -6,24 +6,25 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from investtrack.db import create_db_engine, init_db
-from investtrack.events import StaticEvents
-from investtrack.income import (
+from investtrack.core.income import (
     Income,
     IncomeEvent,
     IncomeType,
     IncomeWithoutPositionError,
     TickerEvents,
 )
-from investtrack.models import Asset, AssetType, OperationRecord, User
-from investtrack.portfolio import (
+from investtrack.core.portfolio import (
+    AssetType,
     InsufficientPositionError,
     Operation,
     OpType,
     StockEvent,
     StockEventType,
 )
-from investtrack.repository import (
+from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.events import StaticEvents
+from investtrack.storage.models import Asset, OperationRecord, User
+from investtrack.storage.repository import (
     IncomeNotFoundError,
     OperationNotFoundError,
     add_income,

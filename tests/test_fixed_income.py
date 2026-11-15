@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from investtrack.fixed_income import (
+from investtrack.core.fixed_income import (
     FixedIncome,
     Indexer,
     PartialRedemption,
@@ -22,7 +22,7 @@ from investtrack.fixed_income import (
     taxes,
     value_on,
 )
-from investtrack.performance import portfolio_history
+from investtrack.core.performance import portfolio_history
 
 START = date(2026, 3, 2)
 DAYS = [date(2026, 3, d) for d in (2, 3, 4, 5, 6)]

@@ -17,10 +17,9 @@ from pydantic import (
     field_validator,
 )
 
-from investtrack.fixed_income import Indexer, Product
-from investtrack.income import IncomeSource, IncomeType
-from investtrack.models import AssetType
-from investtrack.portfolio import OpType, StockEventType
+from investtrack.core.fixed_income import Indexer, Product
+from investtrack.core.income import IncomeSource, IncomeType
+from investtrack.core.portfolio import AssetType, OpType, StockEventType
 
 # For classes with a field named "date": inside them that name means the
 # field's default, not the type, once annotations are evaluated.

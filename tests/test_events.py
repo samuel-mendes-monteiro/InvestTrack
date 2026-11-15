@@ -6,12 +6,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from investtrack.b3 import EventsUnavailableError, SourceDownError
-from investtrack.db import create_db_engine, init_db
-from investtrack.events import StaticEvents, StoredEvents
-from investtrack.income import IncomeEvent, IncomeType, TickerEvents
-from investtrack.models import AssetType
-from investtrack.portfolio import StockEvent, StockEventType
+from investtrack.core.income import IncomeEvent, IncomeType, TickerEvents
+from investtrack.core.portfolio import AssetType, StockEvent, StockEventType
+from investtrack.sources.b3 import EventsUnavailableError, SourceDownError
+from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.events import StaticEvents, StoredEvents
 
 T0 = datetime(2026, 11, 14, 13, 0, tzinfo=UTC)
 NOTHING = TickerEvents([], [])

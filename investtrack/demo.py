@@ -11,12 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from investtrack.auth import Auth
-from investtrack.db import create_db_engine, init_db
-from investtrack.fixed_income import FixedIncome, Indexer, Product
-from investtrack.income import Income, IncomeType, net_income_by_ticker
-from investtrack.models import AssetType, OperationRecord, User
-from investtrack.portfolio import Operation, OpType
-from investtrack.repository import (
+from investtrack.core.fixed_income import FixedIncome, Indexer, Product
+from investtrack.core.income import Income, IncomeType, net_income_by_ticker
+from investtrack.core.portfolio import AssetType, Operation, OpType
+from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.models import OperationRecord, User
+from investtrack.storage.repository import (
     add_fixed_income,
     add_income,
     add_operation,

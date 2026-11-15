@@ -15,8 +15,8 @@ from typing import Protocol
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from investtrack.brapi import QuoteUnavailableError, SourceDownError
-from investtrack.models import PriceCache
+from investtrack.sources.brapi import QuoteUnavailableError, SourceDownError
+from investtrack.storage.models import PriceCache
 
 log = logging.getLogger(__name__)
 

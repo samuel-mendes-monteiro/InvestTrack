@@ -20,10 +20,10 @@ from typing import Protocol
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
-from investtrack.b3 import EventsUnavailableError, SourceDownError
-from investtrack.income import IncomeEvent, TickerEvents
-from investtrack.models import AssetType, EventSync, IncomeEventRecord, StockEventRecord
-from investtrack.portfolio import StockEvent
+from investtrack.core.income import IncomeEvent, TickerEvents
+from investtrack.core.portfolio import AssetType, StockEvent
+from investtrack.sources.b3 import EventsUnavailableError, SourceDownError
+from investtrack.storage.models import EventSync, IncomeEventRecord, StockEventRecord
 
 log = logging.getLogger(__name__)
 

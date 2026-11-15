@@ -10,7 +10,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-import investtrack.db
+import investtrack.storage.db
 
 revision: str = "0001"
 down_revision: str | None = None
@@ -46,7 +46,7 @@ def upgrade() -> None:
             "benchmark_values",
             sa.Column("series", sa.String(length=10), nullable=False),
             sa.Column("date", sa.Date(), nullable=False),
-            sa.Column("value", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("value", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.PrimaryKeyConstraint("series", "date"),
         )
 
@@ -55,7 +55,7 @@ def upgrade() -> None:
             "bonus_costs",
             sa.Column("ticker", sa.String(length=12), nullable=False),
             sa.Column("record_date", sa.Date(), nullable=False),
-            sa.Column("unit_cost", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("unit_cost", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.PrimaryKeyConstraint("ticker", "record_date"),
         )
 
@@ -64,7 +64,7 @@ def upgrade() -> None:
             "daily_prices",
             sa.Column("ticker", sa.String(length=12), nullable=False),
             sa.Column("date", sa.Date(), nullable=False),
-            sa.Column("close", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("close", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.PrimaryKeyConstraint("ticker", "date"),
         )
         with op.batch_alter_table("daily_prices", schema=None) as batch_op:
@@ -93,10 +93,10 @@ def upgrade() -> None:
                 sa.Enum("CDI", "PRE", name="indexer", native_enum=False, length=10),
                 nullable=False,
             ),
-            sa.Column("rate", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("rate", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.Column("start", sa.Date(), nullable=False),
             sa.Column("maturity", sa.Date(), nullable=False),
-            sa.Column("amount", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("amount", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.Column("redeemed_on", sa.Date(), nullable=True),
             sa.PrimaryKeyConstraint("id"),
         )
@@ -128,7 +128,7 @@ def upgrade() -> None:
             ),
             sa.Column("record_date", sa.Date(), nullable=False),
             sa.Column("payment_date", sa.Date(), nullable=True),
-            sa.Column("rate", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("rate", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.PrimaryKeyConstraint("id"),
         )
         with op.batch_alter_table("income_events", schema=None) as batch_op:
@@ -140,7 +140,7 @@ def upgrade() -> None:
         op.create_table(
             "price_cache",
             sa.Column("ticker", sa.String(length=12), nullable=False),
-            sa.Column("price", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("price", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.Column("fetched_at", sa.DateTime(timezone=True), nullable=False),
             sa.PrimaryKeyConstraint("ticker"),
         )
@@ -163,8 +163,8 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.Column("record_date", sa.Date(), nullable=False),
-            sa.Column("multiplier", investtrack.db.SafeDecimal(), nullable=False),
-            sa.Column("unit_cost", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("multiplier", investtrack.storage.db.SafeDecimal(), nullable=False),
+            sa.Column("unit_cost", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.PrimaryKeyConstraint("id"),
         )
         with op.batch_alter_table("stock_events", schema=None) as batch_op:
@@ -190,8 +190,8 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.Column("date", sa.Date(), nullable=False),
-            sa.Column("amount", investtrack.db.SafeDecimal(), nullable=False),
-            sa.Column("tax", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("amount", investtrack.storage.db.SafeDecimal(), nullable=False),
+            sa.Column("tax", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.ForeignKeyConstraint(
                 ["asset_id"],
                 ["assets.id"],
@@ -212,9 +212,9 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.Column("date", sa.Date(), nullable=False),
-            sa.Column("quantity", investtrack.db.SafeDecimal(), nullable=False),
-            sa.Column("price", investtrack.db.SafeDecimal(), nullable=False),
-            sa.Column("fees", investtrack.db.SafeDecimal(), nullable=False),
+            sa.Column("quantity", investtrack.storage.db.SafeDecimal(), nullable=False),
+            sa.Column("price", investtrack.storage.db.SafeDecimal(), nullable=False),
+            sa.Column("fees", investtrack.storage.db.SafeDecimal(), nullable=False),
             sa.ForeignKeyConstraint(
                 ["asset_id"],
                 ["assets.id"],

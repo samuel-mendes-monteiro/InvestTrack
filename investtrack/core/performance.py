@@ -25,8 +25,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
-from investtrack.income import Income, quantity_on
-from investtrack.portfolio import ONE, ZERO, Operation, OpType, StockEvent
+from investtrack.core.income import Income, quantity_on
+from investtrack.core.portfolio import ONE, ZERO, Operation, OpType, StockEvent
 
 
 @dataclass(frozen=True)

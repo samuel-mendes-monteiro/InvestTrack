@@ -27,7 +27,7 @@ from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
-from investtrack.portfolio import ZERO, Operation, OpType, StockEvent, calculate_position
+from investtrack.core.portfolio import ZERO, Operation, OpType, StockEvent, calculate_position
 
 # Income tax withheld on JCP for individuals (Lei 9.249/95, art. 9).
 JCP_TAX_RATE = Decimal("0.15")

@@ -29,8 +29,8 @@ from decimal import Decimal, InvalidOperation
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-from investtrack.models import AssetType
-from investtrack.portfolio import OpType
+from investtrack.core.portfolio import AssetType, OpType
+from investtrack.core.statement_import import StatementRow
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # a statement of several years is a few hundred KB
 
@@ -51,16 +51,6 @@ BDR = re.compile(r"^[A-Z0-9]{4}3[2-59]$")  # 32, 33, 34, 35, 39
 
 class StatementError(ValueError):
     """The file is not a B3 trade statement this module can read."""
-
-
-@dataclass(frozen=True)
-class StatementRow:
-    line: int  # row number in the spreadsheet, for messages
-    date: date
-    op_type: OpType
-    ticker: str
-    quantity: Decimal
-    price: Decimal
 
 
 @dataclass(frozen=True)

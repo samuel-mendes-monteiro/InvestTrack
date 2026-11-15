@@ -23,8 +23,8 @@ from decimal import Decimal, InvalidOperation
 
 import requests
 
-from investtrack.income import IncomeEvent, IncomeType, TickerEvents
-from investtrack.portfolio import ONE, StockEvent, StockEventType
+from investtrack.core.income import IncomeEvent, IncomeType, TickerEvents
+from investtrack.core.portfolio import ONE, StockEvent, StockEventType
 
 log = logging.getLogger(__name__)
 

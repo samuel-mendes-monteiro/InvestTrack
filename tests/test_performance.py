@@ -3,8 +3,8 @@
 from datetime import date
 from decimal import Decimal
 
-from investtrack.income import Income, IncomeSource, IncomeType
-from investtrack.performance import (
+from investtrack.core.income import Income, IncomeSource, IncomeType
+from investtrack.core.performance import (
     Period,
     cdi_accumulated,
     index_return,
@@ -13,7 +13,7 @@ from investtrack.performance import (
     rebase,
     window_base,
 )
-from investtrack.portfolio import Operation, OpType, StockEvent, StockEventType
+from investtrack.core.portfolio import Operation, OpType, StockEvent, StockEventType
 
 D = [date(2026, 3, d) for d in (2, 3, 4, 5, 6)]  # Monday to Friday
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "investtrack"
-version = "1.0.0"
+version = "1.1.0"
 description = "Personal investment portfolio tracker for the Brazilian stock market (B3)"
 requires-python = ">=3.12"
 dependencies = [
@@ -32,7 +32,7 @@ dev = [
 include = ["investtrack*"]  # also the migrations, which have no __init__.py
 
 [tool.setuptools.package-data]
-investtrack = ["migrations/script.py.mako"]
+investtrack = ["storage/migrations/script.py.mako"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -54,7 +54,7 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.coverage.run]
 source = ["investtrack"]
-omit = ["investtrack/demo.py", "investtrack/migrations/*"]  # migrations: test_migrations.py
+omit = ["investtrack/demo.py", "investtrack/storage/migrations/*"]  # migrations: test_migrations.py
 
 [tool.ruff.lint.isort]
 known-first-party = ["investtrack"]

@@ -8,8 +8,8 @@ Two ways in:
 
 from alembic import context
 
-from investtrack import models  # noqa: F401  (registers the tables)
-from investtrack.db import Base, create_db_engine
+from investtrack.storage import models  # noqa: F401  (registers the tables)
+from investtrack.storage.db import Base, create_db_engine
 
 target_metadata = Base.metadata
 

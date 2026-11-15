@@ -13,17 +13,15 @@ from decimal import Decimal
 import pytest
 from openpyxl import Workbook
 
-from investtrack.b3_statement import (
+from investtrack.core.portfolio import AssetType, Operation, OpType, StockEvent, StockEventType
+from investtrack.core.statement_import import StatementRow, Status, plan_import
+from investtrack.sources.b3_statement import (
     MAX_FILE_SIZE,
     StatementError,
-    StatementRow,
     guess_asset_type,
     normalize_ticker,
     read_statement,
 )
-from investtrack.models import AssetType
-from investtrack.portfolio import Operation, OpType, StockEvent, StockEventType
-from investtrack.statement_import import Status, plan_import
 
 HEADER = [
     "Data do Negócio",

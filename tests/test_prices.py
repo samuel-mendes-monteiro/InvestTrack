@@ -6,9 +6,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from investtrack.brapi import QuoteUnavailableError, SourceDownError
-from investtrack.db import create_db_engine, init_db
-from investtrack.prices import CachedPriceProvider
+from investtrack.sources.brapi import QuoteUnavailableError, SourceDownError
+from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.prices import CachedPriceProvider
 
 T0 = datetime(2026, 11, 14, 13, 0, tzinfo=UTC)
 

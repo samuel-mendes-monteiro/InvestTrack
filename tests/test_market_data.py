@@ -6,9 +6,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from investtrack.db import create_db_engine, init_db
-from investtrack.history import HistoryUnavailableError, NotPublishedError
-from investtrack.market_data import CDI, IBOV, MarketData
+from investtrack.sources.history import HistoryUnavailableError, NotPublishedError
+from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.market_data import CDI, IBOV, MarketData
 
 TODAY = date(2026, 11, 14)  # a Saturday
 

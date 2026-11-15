@@ -37,7 +37,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
-from investtrack.portfolio import ONE, ZERO
+from investtrack.core.portfolio import ONE, ZERO
 
 
 class Product(StrEnum):

@@ -12,7 +12,9 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from investtrack.b3 import (
+from investtrack.core.income import IncomeType, TickerEvents
+from investtrack.core.portfolio import StockEventType
+from investtrack.sources.b3 import (
     B3Client,
     EventsUnavailableError,
     SourceDownError,
@@ -20,8 +22,6 @@ from investtrack.b3 import (
     parse_events,
     parse_stock_events,
 )
-from investtrack.income import IncomeType, TickerEvents
-from investtrack.portfolio import StockEventType
 
 
 def item(isin, label, rate, record="01/09/2026", payment="11/09/2026"):

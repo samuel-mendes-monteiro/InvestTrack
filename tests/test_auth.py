@@ -18,9 +18,9 @@ from investtrack.auth import (
     WeakPasswordError,
     hash_token,
 )
-from investtrack.db import create_db_engine, init_db
-from investtrack.models import Asset, AssetType, AuthSession, OperationRecord, User
-from investtrack.portfolio import OpType
+from investtrack.core.portfolio import AssetType, OpType
+from investtrack.storage.db import create_db_engine, init_db
+from investtrack.storage.models import Asset, AuthSession, OperationRecord, User
 
 # Real Argon2id, with the cheapest parameters: tests stay fast.
 FAST = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)

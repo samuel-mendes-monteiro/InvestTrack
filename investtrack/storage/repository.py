@@ -18,20 +18,9 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, contains_eager
 
-from investtrack.b3_statement import StatementRow, guess_asset_type
-from investtrack.events import NO_EVENTS, EventSource
-from investtrack.fixed_income import FixedIncome, PartialRedemption, gross_values
-from investtrack.income import Income, check_incomes, incomes_from_events
-from investtrack.models import (
-    Asset,
-    AssetType,
-    BonusCost,
-    FixedIncomeRecord,
-    IncomeRecord,
-    OperationRecord,
-    PartialRedemptionRecord,
-)
-from investtrack.portfolio import (
+from investtrack.core.fixed_income import FixedIncome, PartialRedemption, gross_values
+from investtrack.core.income import Income, check_incomes, incomes_from_events
+from investtrack.core.portfolio import (
     AppliedStockEvent,
     Operation,
     Position,
@@ -41,7 +30,18 @@ from investtrack.portfolio import (
     calculate_portfolio,
     calculate_position,
 )
-from investtrack.statement_import import PlannedRow, Status, plan_import
+from investtrack.core.statement_import import PlannedRow, StatementRow, Status, plan_import
+from investtrack.sources.b3_statement import guess_asset_type
+from investtrack.storage.events import NO_EVENTS, EventSource
+from investtrack.storage.models import (
+    Asset,
+    AssetType,
+    BonusCost,
+    FixedIncomeRecord,
+    IncomeRecord,
+    OperationRecord,
+    PartialRedemptionRecord,
+)
 
 
 class OperationNotFoundError(LookupError):

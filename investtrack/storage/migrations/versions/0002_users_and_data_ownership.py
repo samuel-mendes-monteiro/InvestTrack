@@ -14,7 +14,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-import investtrack.db
+import investtrack.storage.db
 
 revision: str = "0002"
 down_revision: str | None = "0001"
@@ -87,7 +87,7 @@ def _add_owners() -> None:
         sa.Column("user_id", sa.Integer(), nullable=True),
         sa.Column("ticker", sa.String(length=12), nullable=False),
         sa.Column("record_date", sa.Date(), nullable=False),
-        sa.Column("unit_cost", investtrack.db.SafeDecimal(), nullable=False),
+        sa.Column("unit_cost", investtrack.storage.db.SafeDecimal(), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="fk_bonus_costs_user_id"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
@@ -108,7 +108,7 @@ def downgrade() -> None:
         "bonus_costs_old",
         sa.Column("ticker", sa.String(length=12), nullable=False),
         sa.Column("record_date", sa.Date(), nullable=False),
-        sa.Column("unit_cost", investtrack.db.SafeDecimal(), nullable=False),
+        sa.Column("unit_cost", investtrack.storage.db.SafeDecimal(), nullable=False),
         sa.PrimaryKeyConstraint("ticker", "record_date"),
     )
     # With several users, the same bonus may have several costs: keep one.

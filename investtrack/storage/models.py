@@ -8,15 +8,14 @@ from the operations.
 
 from datetime import date, datetime
 from decimal import Decimal
-from enum import StrEnum
 
 from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from investtrack.db import Base, SafeDecimal
-from investtrack.fixed_income import Indexer, Product
-from investtrack.income import IncomeType
-from investtrack.portfolio import OpType, StockEventType
+from investtrack.core.fixed_income import Indexer, Product
+from investtrack.core.income import IncomeType
+from investtrack.core.portfolio import AssetType, OpType, StockEventType
+from investtrack.storage.db import Base, SafeDecimal
 
 
 class User(Base):
@@ -47,13 +46,6 @@ class AuthSession(Base):
 # application always sets it.
 def owner_column() -> Mapped[int | None]:
     return mapped_column(ForeignKey("users.id"), index=True)
-
-
-class AssetType(StrEnum):
-    STOCK = "STOCK"
-    FII = "FII"
-    ETF = "ETF"
-    BDR = "BDR"
 
 
 class Asset(Base):

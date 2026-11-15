@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from investtrack.income import (
+from investtrack.core.income import (
     JCP_TAX_RATE,
     Income,
     IncomeEvent,
@@ -16,7 +16,7 @@ from investtrack.income import (
     net_income_by_ticker,
     quantity_on,
 )
-from investtrack.portfolio import Operation, OpType, StockEvent, StockEventType
+from investtrack.core.portfolio import Operation, OpType, StockEvent, StockEventType
 
 
 def income(month, day, amount, tax="0", kind=IncomeType.DIVIDEND, ticker="ITSA4"):

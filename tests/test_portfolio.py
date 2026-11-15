@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from investtrack.portfolio import (
+from investtrack.core.portfolio import (
     InsufficientPositionError,
     Operation,
     OpType,

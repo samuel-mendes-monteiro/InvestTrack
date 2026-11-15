@@ -25,7 +25,7 @@ from typing import Protocol
 from sqlalchemy import Engine, delete, func, insert, select
 from sqlalchemy.orm import Session
 
-from investtrack.history import (
+from investtrack.sources.history import (
     CotahistClient,
     HistoryUnavailableError,
     NotPublishedError,
@@ -33,7 +33,7 @@ from investtrack.history import (
     fetch_ibovespa_year,
     fetch_ipca,
 )
-from investtrack.models import BenchmarkValue, DailyPrice, HistoryLoad
+from investtrack.storage.models import BenchmarkValue, DailyPrice, HistoryLoad
 
 log = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from investtrack.brapi import BrapiClient, QuoteUnavailableError, SourceDownError
+from investtrack.sources.brapi import BrapiClient, QuoteUnavailableError, SourceDownError
 
 
 def fake_response(status: int, body: str) -> requests.Response:

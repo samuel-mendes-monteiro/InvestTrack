@@ -12,7 +12,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-import investtrack.db
+import investtrack.storage.db
 
 revision: str = "0004"
 down_revision: str | None = "0003"
@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("fixed_income_id", sa.Integer(), nullable=False),
         sa.Column("date", sa.Date(), nullable=False),
-        sa.Column("gross", investtrack.db.SafeDecimal(), nullable=False),
+        sa.Column("gross", investtrack.storage.db.SafeDecimal(), nullable=False),
         sa.ForeignKeyConstraint(
             ["fixed_income_id"],
             ["fixed_income.id"],

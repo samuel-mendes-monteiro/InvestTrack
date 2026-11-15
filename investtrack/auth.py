@@ -25,7 +25,7 @@ from argon2.exceptions import InvalidHashError, VerificationError
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from investtrack.models import (
+from investtrack.storage.models import (
     AuthSession,
     BonusCost,
     FixedIncomeRecord,

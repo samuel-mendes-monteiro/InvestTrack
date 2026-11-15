@@ -5,7 +5,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, text
 
-from investtrack.db import MIGRATIONS, create_db_engine, init_db
+from investtrack.storage.db import MIGRATIONS, create_db_engine, init_db
 
 
 def alembic(engine, action: str, revision: str) -> None:

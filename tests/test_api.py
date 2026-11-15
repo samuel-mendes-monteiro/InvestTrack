@@ -7,13 +7,14 @@ import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
-from investtrack.api import SESSION_COOKIE, create_app
-from investtrack.db import create_db_engine
-from investtrack.events import StaticEvents
-from investtrack.income import IncomeEvent, IncomeType
-from investtrack.market_data import StaticMarketData
-from investtrack.portfolio import StockEvent, StockEventType
-from investtrack.prices import StaticPriceProvider
+from investtrack.api import create_app
+from investtrack.api.deps import SESSION_COOKIE
+from investtrack.core.income import IncomeEvent, IncomeType
+from investtrack.core.portfolio import StockEvent, StockEventType
+from investtrack.storage.db import create_db_engine
+from investtrack.storage.events import StaticEvents
+from investtrack.storage.market_data import StaticMarketData
+from investtrack.storage.prices import StaticPriceProvider
 from tests.test_b3_statement import statement, trade
 
 PRICES = StaticPriceProvider({"PETR4": Decimal("38"), "HGLG11": Decimal("160")})

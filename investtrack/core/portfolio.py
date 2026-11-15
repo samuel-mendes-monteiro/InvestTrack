@@ -15,6 +15,13 @@ ZERO = Decimal("0")
 ONE = Decimal("1")
 
 
+class AssetType(StrEnum):
+    STOCK = "STOCK"
+    FII = "FII"
+    ETF = "ETF"
+    BDR = "BDR"
+
+
 class OpType(StrEnum):
     BUY = "BUY"
     SELL = "SELL"

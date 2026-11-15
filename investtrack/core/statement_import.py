@@ -18,15 +18,29 @@ and an operation typed by hand with its fees is still the same trade.
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from enum import StrEnum
 
-from investtrack.b3_statement import StatementRow
-from investtrack.portfolio import (
+from investtrack.core.portfolio import (
     InsufficientPositionError,
     Operation,
+    OpType,
     StockEvent,
     calculate_position,
 )
+
+
+@dataclass(frozen=True)
+class StatementRow:
+    """One trade read from the statement (sources/b3_statement.py)."""
+
+    line: int  # row number in the spreadsheet, for messages
+    date: date
+    op_type: OpType
+    ticker: str
+    quantity: Decimal
+    price: Decimal
 
 
 class Status(StrEnum):
