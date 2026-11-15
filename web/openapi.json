@@ -1077,6 +1077,18 @@
             "description": "TWR as a percentage of the CDI",
             "title": "Pct Of Cdi"
           },
+          "pct_of_cdi_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The price-only return as a percentage of the CDI",
+            "title": "Pct Of Cdi Price"
+          },
           "points": {
             "items": {
               "$ref": "#/components/schemas/PerformancePoint"
@@ -1112,6 +1124,18 @@
               }
             ],
             "title": "Twr"
+          },
+          "twr_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The same return without income: from prices (and fees) only, %",
+            "title": "Twr Price"
           }
         },
         "required": [
@@ -1173,6 +1197,11 @@
             "title": "Twr",
             "type": "string"
           },
+          "twr_price": {
+            "description": "The same without income: prices (and fees) only, %",
+            "title": "Twr Price",
+            "type": "string"
+          },
           "value": {
             "description": "Portfolio value at the close",
             "title": "Value",
@@ -1185,6 +1214,7 @@
           "net_worth",
           "invested",
           "twr",
+          "twr_price",
           "cdi",
           "ibovespa"
         ],

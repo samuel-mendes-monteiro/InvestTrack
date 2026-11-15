@@ -119,14 +119,15 @@ export function performance(overrides: Partial<Schemas['PerformanceOut']> = {}):
     start: '2026-01-05',
     as_of: '2026-11-13',
     twr: '48.8213',
+    twr_price: '45.1000',
     cdi: '12.0811',
     ibovespa: '7.4172',
     pct_of_cdi: '404.11',
     syncing: false,
     invested_now: '6000.00',
     points: [
-      { date: '2026-01-05', twr: '0', cdi: '0', ibovespa: '0', value: '3000.00', net_worth: '3000.00', invested: '3000.00' },
-      { date: '2026-11-13', twr: '48.8213', cdi: '12.0811', ibovespa: null, value: '8405.95', net_worth: '8390.15', invested: '5000.00' },
+      { date: '2026-01-05', twr: '0', twr_price: '0', cdi: '0', ibovespa: '0', value: '3000.00', net_worth: '3000.00', invested: '3000.00' },
+      { date: '2026-11-13', twr: '48.8213', twr_price: '45.1', cdi: '12.0811', ibovespa: null, value: '8405.95', net_worth: '8390.15', invested: '5000.00' },
     ],
     ...overrides,
   }

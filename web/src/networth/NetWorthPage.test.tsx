@@ -59,8 +59,8 @@ test('fees are money put in: the gain matches the position result (the ITUB4 cas
         start: '2026-01-07',
         invested_now: '1973.90',
         points: [
-          { date: '2026-01-07', twr: '0', cdi: '0', ibovespa: '0', value: '1966.00', net_worth: '1966.00', invested: '1973.90' },
-          { date: '2026-11-13', twr: '7', cdi: '12', ibovespa: '7', value: '2100.00', net_worth: '2100.00', invested: '1973.90' },
+          { date: '2026-01-07', twr: '0', twr_price: '0', cdi: '0', ibovespa: '0', value: '1966.00', net_worth: '1966.00', invested: '1973.90' },
+          { date: '2026-11-13', twr: '7', twr_price: '7', cdi: '12', ibovespa: '7', value: '2100.00', net_worth: '2100.00', invested: '1973.90' },
         ],
       }),
     },
@@ -84,8 +84,8 @@ test('over a period, the gain leaves out what was put in during it', async () =>
             period === '1M'
               ? [
                   // 1000 at the period's start, then 600 more put in (900 -> 1500 by now).
-                  { date: '2026-10-13', twr: '0', cdi: '0', ibovespa: '0', value: '1000.00', net_worth: '1000.00', invested: '900.00' },
-                  { date: '2026-11-13', twr: '1', cdi: '1', ibovespa: '1', value: '1580.00', net_worth: '1580.00', invested: '1400.00' },
+                  { date: '2026-10-13', twr: '0', twr_price: '0', cdi: '0', ibovespa: '0', value: '1000.00', net_worth: '1000.00', invested: '900.00' },
+                  { date: '2026-11-13', twr: '1', twr_price: '1', cdi: '1', ibovespa: '1', value: '1580.00', net_worth: '1580.00', invested: '1400.00' },
                 ]
               : performance().points,
         }),

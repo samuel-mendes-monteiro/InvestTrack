@@ -263,6 +263,7 @@ class PerformancePoint(BaseModel):
         description="Money put in minus taken out until this close, fees included"
     )
     twr: Money = Field(description="Cumulative time-weighted return, %")
+    twr_price: Money = Field(description="The same without income: prices (and fees) only, %")
     cdi: Money | None = Field(description="CDI accumulated over the same period, %")
     ibovespa: Money | None = Field(description="Ibovespa return over the same period, %")
 
@@ -274,9 +275,15 @@ class PerformanceOut(BaseModel):
     )
     as_of: date | None = Field(description="Last day with official closing prices")
     twr: Money | None
+    twr_price: Money | None = Field(
+        None, description="The same return without income: from prices (and fees) only, %"
+    )
     cdi: Money | None
     ibovespa: Money | None
     pct_of_cdi: Money | None = Field(description="TWR as a percentage of the CDI")
+    pct_of_cdi_price: Money | None = Field(
+        None, description="The price-only return as a percentage of the CDI"
+    )
     points: list[PerformancePoint]
     invested_now: Money | None = Field(
         None,

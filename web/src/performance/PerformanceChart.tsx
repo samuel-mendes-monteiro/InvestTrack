@@ -18,17 +18,29 @@ type Point = Schemas['PerformancePoint']
 const axisPct = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 
 /** Cumulative return of the portfolio against CDI and Ibovespa, in %. */
-export function PerformanceChart({ points, height = 280 }: { points: Point[]; height?: number }) {
+export function PerformanceChart({
+  points,
+  height = 280,
+  withIncome = true,
+}: {
+  points: Point[]
+  height?: number
+  /** false: the portfolio line leaves income out (prices and fees only). */
+  withIncome?: boolean
+}) {
   // useId gives ":r1:", and a colon would end the url(#...) that points at the gradient.
   const gradient = `twr-${useId().replace(/:/g, '')}`
   // Number() only for drawing; the tooltip shows the API's exact strings.
-  const data = points.map((p) => ({
-    date: p.date,
-    twr: Number(p.twr),
-    cdi: p.cdi == null ? null : Number(p.cdi),
-    ibovespa: p.ibovespa == null ? null : Number(p.ibovespa),
-    exact: p,
-  }))
+  const data = points.map((p) => {
+    const twr = withIncome ? p.twr : p.twr_price
+    return {
+      date: p.date,
+      twr: Number(twr),
+      cdi: p.cdi == null ? null : Number(p.cdi),
+      ibovespa: p.ibovespa == null ? null : Number(p.ibovespa),
+      exact: { ...p, twr },
+    }
+  })
 
   return (
     <>

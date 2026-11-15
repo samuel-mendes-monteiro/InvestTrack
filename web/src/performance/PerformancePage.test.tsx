@@ -20,6 +20,8 @@ test('shows the TWR next to CDI and Ibovespa', async () => {
   expect(metric('Ibovespa')).toHaveTextContent('+7,42%')
   expect(metric('% do CDI')).toHaveTextContent('404%')
   expect(screen.getByText(/de 05\/01\/2026 a 13\/11\/2026/)).toBeInTheDocument()
+  // Where it came from, in two parts that add up to the total.
+  expect(screen.getByText(/^Cotação/)).toHaveTextContent('Cotação +45,10% · Proventos +3,72%')
 })
 
 test('while history downloads it says so and refetches by itself', async () => {
@@ -69,4 +71,22 @@ test('the period comes from the URL', async () => {
   const periods = await screen.findByRole('group', { name: 'Período' })
   expect(within(periods).getByRole('button', { name: '1A' })).toHaveAttribute('aria-pressed', 'true')
   expect(new URL(api.requests[0].url).searchParams.get('period')).toBe('1Y')
+})
+
+test('the income switch takes income out of the line and the numbers', async () => {
+  fakeApi({
+    'GET /performance': { body: performance({ twr_price: '45.10', pct_of_cdi_price: '373.31' }) },
+  })
+  renderWithApp(<PerformancePage />)
+  const toggle = await screen.findByRole('switch', { name: 'Incluir proventos' })
+  expect(toggle).toBeChecked()
+  expect(metric('Carteira')).toHaveTextContent('+48,82%')
+
+  await userEvent.click(toggle)
+
+  expect(toggle).not.toBeChecked()
+  expect(screen.getByText('+45,10%', { selector: '.chart-figure' })).toBeInTheDocument()
+  expect(metric('Carteira (sem proventos)')).toHaveTextContent('+45,10%')
+  expect(metric('% do CDI')).toHaveTextContent('373%')
+  expect(screen.getByText(/Só a cotação/)).toBeInTheDocument()
 })

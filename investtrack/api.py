@@ -1130,6 +1130,14 @@ def create_app(
         history = portfolio_history(
             operations, days, closes, stock, incomes, other_values=fi_values, other_flows=fi_flows
         )
+        # The same without income: the part of the return that came from prices
+        # (and fees, and fixed income). The rest of the TWR is the income.
+        price_only = {
+            h.date: h.twr
+            for h in portfolio_history(
+                operations, days, closes, stock, (), other_values=fi_values, other_flows=fi_flows
+            )
+        }
         if not history:
             return PerformanceOut(
                 syncing=syncing,
@@ -1177,6 +1185,13 @@ def create_app(
             twr = {h.date: rebase(h.twr, twr_base) for h in history}
         else:
             twr = {h.date: h.twr for h in history}
+        # Price-only return at each close, measured from the same base as the TWR.
+        price_twr = {
+            h.date: price_only[h.date]
+            if base is None
+            else rebase(price_only[h.date], price_only[base])
+            for h in history
+        }
 
         points = [
             PerformancePoint(
@@ -1188,6 +1203,7 @@ def create_app(
                 + fi_net.get(h.date, Decimal("0")),
                 invested=invested[h.date],
                 twr=twr[h.date] * 100,
+                twr_price=price_twr[h.date] * 100,
                 cdi=pct(cdi_acc.get(h.date)),
                 ibovespa=pct(ibov_ret.get(h.date)),
             )
@@ -1199,9 +1215,11 @@ def create_app(
             start=points[0].date,
             as_of=last.date,
             twr=last.twr,
+            twr_price=last.twr_price,
             cdi=last.cdi,
             ibovespa=last.ibovespa,
             pct_of_cdi=last.twr / last.cdi * 100 if last.cdi else None,
+            pct_of_cdi_price=last.twr_price / last.cdi * 100 if last.cdi else None,
             points=points,
             invested_now=invested_now,
         )

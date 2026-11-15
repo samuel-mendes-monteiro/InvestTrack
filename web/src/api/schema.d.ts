@@ -894,6 +894,11 @@ export interface components {
              * @description TWR as a percentage of the CDI
              */
             pct_of_cdi: string | null;
+            /**
+             * Pct Of Cdi Price
+             * @description The price-only return as a percentage of the CDI
+             */
+            pct_of_cdi_price?: string | null;
             /** Points */
             points: components["schemas"]["PerformancePoint"][];
             /**
@@ -908,6 +913,11 @@ export interface components {
             syncing: boolean;
             /** Twr */
             twr: string | null;
+            /**
+             * Twr Price
+             * @description The same return without income: from prices (and fees) only, %
+             */
+            twr_price?: string | null;
         };
         /** PerformancePoint */
         PerformancePoint: {
@@ -941,6 +951,11 @@ export interface components {
              * @description Cumulative time-weighted return, %
              */
             twr: string;
+            /**
+             * Twr Price
+             * @description The same without income: prices (and fees) only, %
+             */
+            twr_price: string;
             /**
              * Value
              * @description Portfolio value at the close

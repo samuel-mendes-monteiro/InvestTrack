@@ -618,6 +618,7 @@ def test_performance_against_benchmarks():
         "net_worth": "1000.00",  # no fixed income: no tax to take out
         "invested": "1000.00",  # 100 x 10, the money put in
         "twr": "0.00",
+        "twr_price": "0.00",
         "cdi": "0.00",
         "ibovespa": "10.00",
     }
@@ -686,6 +687,7 @@ def test_performance_of_a_period_starts_at_zero():
         "net_worth": "1200.00",
         "invested": "1000.00",  # since the first trade, not since the period's start
         "twr": "0.00",
+        "twr_price": "0.00",
         "cdi": "0.00",
         "ibovespa": "0.00",
     }
@@ -727,6 +729,25 @@ def test_money_in_now_counts_a_sale_after_the_last_close():
         body = client.get("/performance").json()
     assert body["points"][-1]["invested"] == "1000.00"  # the sale isn't in the history yet
     assert body["invested_now"] == "521.00"  # 1000 - (40 x 12 - 1)
+
+
+def test_return_splits_into_prices_and_income(events_client):
+    """The ITUB4 case: the TWR counts income, the price-only part doesn't."""
+    market = StaticMarketData(
+        closes={"PETR4": {MON: Decimal("10"), TUE: Decimal("11")}},
+        series={
+            "IBOV": {date(2026, 2, 27): Decimal("100"), MON: Decimal("100"), TUE: Decimal("100")}
+        },
+        last_day=TUE,
+    )
+    client = events_client(event("JCP", "2026-03-02", "2026-03-03", "0.50"))
+    client.app.state.market_data = market
+    client.post("/operations", json=op(qty="100", price="10", day="2026-03-02"))
+    body = client.get("/performance").json()
+    assert body["twr_price"] == "10.00"  # 10 -> 11
+    assert [p["twr_price"] for p in body["points"]] == ["0.00", "10.00"]  # the chart's line
+    # Plus 42.50 of JCP (0.50 x 100, 15% withheld) paid on a 1000 portfolio: 4.25%.
+    assert body["twr"] == "14.25"
 
 
 def test_performance_without_operations():
