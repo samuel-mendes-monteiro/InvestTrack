@@ -952,6 +952,14 @@ def test_portfolio_says_when_fixed_income_is_settled(fi_client):
     assert (body["totals"]["fixed_income"], body["syncing"]) == ("1020.10", False)
 
 
+def test_fixed_income_applied_today_counts_at_its_amount(fi_client):
+    # The CDI history ends on the 4th (ONE_PERCENT_A_DAY); a CDB applied after it,
+    # on a weekend or today, has no business day yet: it is worth what was applied.
+    fi_client.post("/fixed-income", json=fixed(product="CDB", start="2026-03-07"))
+    body = fi_client.get("/portfolio").json()
+    assert (body["totals"]["fixed_income"], body["syncing"]) == ("1000.00", False)
+
+
 def test_unknown_fixed_income_is_not_left_out_of_the_total():
     # No CDI yet (still downloading): the investment has no value. The total
     # is unknown rather than smaller, and the screen is told to ask again.

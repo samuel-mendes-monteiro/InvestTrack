@@ -257,8 +257,12 @@ def business_days(market: MarketDataSource, start: date) -> tuple[list[date], di
     the Ibovespa adds the last trading day, whose value needs only the rates
     of the days before it.
     """
-    cdi = market.series(CDI, start)
-    ibov = market.series(IBOV, start)
+    # From a little before `start`, so the list always holds the last business
+    # day before it: an investment applied after that day (today, on a weekend)
+    # is then known to be new, not missing its history.
+    since = start - timedelta(days=15)
+    cdi = market.series(CDI, since)
+    ibov = market.series(IBOV, since)
     days = sorted(d for d in set(cdi) | set(ibov) if d <= market.last_day())
     # All of it (a few hundred numbers): when the start month isn't published
     # yet, its estimate comes from a month before the start.

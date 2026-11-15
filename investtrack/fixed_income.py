@@ -295,10 +295,18 @@ def value_on(
     cdi: dict[date, Decimal],
     ipca: dict[date, Decimal] | None = None,
 ) -> Valuation | None:
-    """Value on `day` (or the last day with data before it), with taxes."""
+    """Value on `day` (or the last day with data before it), with taxes.
+
+    An investment applied after the last business day with data (today, on a
+    weekend, or before that day's CDI is out) is worth what was applied: no
+    day has passed to earn anything, nor to owe IOF or income tax. None only
+    when there is no history at all, i.e. it is still being downloaded.
+    """
     values = _trajectory(investment, business_days, cdi, ipca)
     known = [d for d in values if d <= day]
     if not known:
+        if business_days and investment.start > business_days[-1]:
+            return Valuation(investment.start, investment.amount, ZERO, ZERO, investment.amount)
         return None
     last = max(known)
     return taxes(investment, last, values[last].gross, values[last].share)

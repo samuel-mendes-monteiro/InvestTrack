@@ -130,6 +130,15 @@ def test_blank_name_and_float_are_rejected():
         FixedIncome("X", Product.CDB, Indexer.CDI, 100.0, START, DAYS[4], Decimal("1"))
 
 
+def test_applied_after_the_last_business_day_is_worth_the_amount():
+    # Applied on a Sunday, after the last day with CDI: nothing earned, nothing owed yet.
+    sunday = DAYS[-1] + timedelta(days=2)
+    v = value_on(cdb(start=sunday), sunday, DAYS, ONE_PERCENT)
+    assert (v.day, v.gross, v.net, v.gross_return) == (sunday, Decimal("1000"), Decimal("1000"), 0)
+    # No history at all is different: still unknown, not 1000.
+    assert value_on(cdb(start=sunday), sunday, [], {}) is None
+
+
 def test_daily_series_flows_in_and_out():
     redeemed = cdb(redeemed_on=DAYS[2])
     running = cdb(start=DAYS[1])
