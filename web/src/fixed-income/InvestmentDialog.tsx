@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import {
   useAddPartialRedemption,
-  useDeleteFixedIncome,
   useDeletePartialRedemption,
   useRedeem,
   type FixedIncome,
@@ -12,22 +11,22 @@ import { FI_STATUS } from '../labels'
 import { rateLabel } from './rate'
 
 /**
- * Everything done to one investment: partial and total redemptions, and
- * deleting it. Reads `investment` from the list, so after each change the
+ * The money taken out of one investment, in one form: an amount is a partial
+ * redemption; "Resgatar tudo" is the total one (deleting it is in the edit
+ * form). Reads `investment` from the list, so after each change the
  * refetched list re-renders this dialog with the new numbers.
  */
 export function InvestmentDialog({ investment: f, onClose }: { investment: FixedIncome; onClose: () => void }) {
   const today = todayIso()
-  const [partialDate, setPartialDate] = useState(today)
+  const [day, setDay] = useState(today)
   const [gross, setGross] = useState('')
-  const [redeemDate, setRedeemDate] = useState(today)
+  const [all, setAll] = useState(false)
   const [invalid, setInvalid] = useState<string | null>(null)
   const addPartial = useAddPartialRedemption()
   const deletePartial = useDeletePartialRedemption()
   const redeem = useRedeem()
-  const remove = useDeleteFixedIncome()
 
-  const mutations = [addPartial, deletePartial, redeem, remove]
+  const mutations = [addPartial, deletePartial, redeem]
   const busy = mutations.some((m) => m.isPending)
   const error = invalid ?? mutations.find((m) => m.isError)?.error?.message ?? null
   const active = f.status === 'ACTIVE'
@@ -37,9 +36,15 @@ export function InvestmentDialog({ investment: f, onClose }: { investment: Fixed
     mutations.forEach((m) => m.reset()) // one error at a time: the last action's
   }
 
-  function submitPartial(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault()
     reset()
+    // Everything is the total redemption, not a withdrawal of the whole value:
+    // the API values it on that day itself, and the investment is then over.
+    if (all) {
+      redeem.mutate({ id: f.id, day })
+      return
+    }
     let value: string
     try {
       value = decimalField('Valor resgatado', gross)
@@ -47,15 +52,9 @@ export function InvestmentDialog({ investment: f, onClose }: { investment: Fixed
       setInvalid((e as Error).message)
       return
     }
-    addPartial.mutate({ id: f.id, date: partialDate, gross: value }, { onSuccess: () => setGross('') })
+    addPartial.mutate({ id: f.id, date: day, gross: value }, { onSuccess: () => setGross('') })
   }
 
-  function deleteInvestment() {
-    reset()
-    if (window.confirm(`Apagar a aplicação ${f.name}, com os resgates dela?`)) {
-      remove.mutate(f.id, { onSuccess: onClose })
-    }
-  }
 
   return (
     <Modal title={`${f.name} · ${rateLabel(f)}`} onClose={onClose}>
@@ -71,9 +70,9 @@ export function InvestmentDialog({ investment: f, onClose }: { investment: Fixed
           </p>
         )}
 
-        <section>
-          <h3>Resgates parciais</h3>
-          {f.partial_redemptions.length > 0 && (
+        {f.partial_redemptions.length > 0 && (
+          <section>
+            <h3>Resgates parciais</h3>
             <table className="data" aria-label="Resgates parciais">
               <thead>
                 <tr>
@@ -111,30 +110,11 @@ export function InvestmentDialog({ investment: f, onClose }: { investment: Fixed
                 ))}
               </tbody>
             </table>
-          )}
-          {active && (
-            <form onSubmit={submitPartial} className="inline-form">
-              <label>
-                Data
-                <input type="date" required min={f.start} max={today} value={partialDate} onChange={(e) => setPartialDate(e.target.value)} />
-              </label>
-              <label>
-                Valor resgatado, bruto (R$)
-                <input inputMode="decimal" value={gross} onChange={(e) => setGross(e.target.value)} placeholder="1.000,00" />
-              </label>
-              <button type="submit" className="primary" disabled={busy}>
-                Resgatar parte
-              </button>
-            </form>
-          )}
-          <small>
-            Valor antes do IR e do IOF, como aparece no extrato do banco. O restante continua rendendo; cada resgate paga
-            IR só sobre a parte do rendimento que ele levou.
-          </small>
-        </section>
+          </section>
+        )}
 
         <section>
-          <h3>Resgate total</h3>
+          <h3>Resgatar</h3>
           {f.redeemed_on ? (
             <button
               disabled={busy}
@@ -145,30 +125,42 @@ export function InvestmentDialog({ investment: f, onClose }: { investment: Fixed
             >
               Desfazer o resgate de {brDate(f.redeemed_on)}
             </button>
-          ) : (
-            <form
-              className="inline-form"
-              onSubmit={(e) => {
-                e.preventDefault()
-                reset()
-                redeem.mutate({ id: f.id, day: redeemDate })
-              }}
-            >
+          ) : active ? (
+            <form onSubmit={submit} className="inline-form">
               <label>
-                Data do resgate
-                <input type="date" required min={f.start} max={today} value={redeemDate} onChange={(e) => setRedeemDate(e.target.value)} />
+                Data
+                <input type="date" required min={f.start} max={today} value={day} onChange={(e) => setDay(e.target.value)} />
               </label>
-              <button type="submit" disabled={busy}>
-                Resgatar tudo
+              <label>
+                Valor resgatado, bruto (R$)
+                {/* With "tudo", the value as of the last CDI: the API computes the chosen day's own. */}
+                <input
+                  inputMode="decimal"
+                  value={all ? (f.gross == null ? '' : brl(f.gross).replace('R$ ', '')) : gross}
+                  onChange={(e) => setGross(e.target.value)}
+                  placeholder={all ? 'Tudo' : '1.000,00'}
+                  readOnly={all}
+                />
+              </label>
+              <button type="submit" className="primary" disabled={busy}>
+                Resgatar
               </button>
+              <label className="check">
+                <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
+                Resgatar tudo
+              </label>
             </form>
+          ) : null}
+          {active && (
+            <small>
+              {all
+                ? `Encerra a aplicação na data escolhida. O valor acima é o${f.as_of ? ` de ${brDate(f.as_of)}, último dia com CDI publicado` : ' mais recente'}; o do dia do resgate é calculado ao resgatar.`
+                : 'Valor antes do IR e do IOF, como aparece no extrato do banco. O restante continua rendendo; cada resgate paga IR só sobre a parte do rendimento que ele levou.'}
+            </small>
           )}
         </section>
 
         <div className="actions">
-          <button className="push-left danger" onClick={deleteInvestment} disabled={busy}>
-            Apagar aplicação
-          </button>
           <button onClick={onClose}>Fechar</button>
         </div>
       </div>

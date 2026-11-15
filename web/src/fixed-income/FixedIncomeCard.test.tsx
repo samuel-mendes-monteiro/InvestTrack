@@ -87,10 +87,10 @@ test('a partial redemption too large shows the value on that day', async () => {
   renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
-  await user.click(await screen.findByRole('button', { name: 'Resgatar ou apagar CDB Banco X' }))
+  await user.click(await screen.findByRole('button', { name: 'Resgatar CDB Banco X' }))
   const dialog = screen.getByRole('dialog', { name: 'CDB Banco X · 110% do CDI' })
   await user.type(within(dialog).getByLabelText(/Valor resgatado/), '9.000')
-  await user.click(within(dialog).getByRole('button', { name: 'Resgatar parte' }))
+  await user.click(within(dialog).getByRole('button', { name: 'Resgatar' }))
 
   expect(await within(dialog).findByRole('alert')).toHaveTextContent(
     'Em 01/06/2026 a aplicação valia R$ 5.200,50: um resgate parcial precisa ser menor.',
@@ -111,14 +111,16 @@ test('the dialog follows the refetched investment after a change', async () => {
   renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
-  await user.click(await screen.findByRole('button', { name: 'Resgatar ou apagar CDB Banco X' }))
+  await user.click(await screen.findByRole('button', { name: 'Resgatar CDB Banco X' }))
   const dialog = screen.getByRole('dialog')
-  await user.clear(within(dialog).getByLabelText('Data do resgate'))
-  await user.type(within(dialog).getByLabelText('Data do resgate'), '2026-11-10')
-  await user.click(within(dialog).getByRole('button', { name: 'Resgatar tudo' }))
+  await user.clear(within(dialog).getByLabelText('Data'))
+  await user.type(within(dialog).getByLabelText('Data'), '2026-11-10')
+  await user.click(within(dialog).getByRole('checkbox', { name: 'Resgatar tudo' }))
+  expect(within(dialog).getByLabelText(/Valor resgatado/)).toHaveAttribute('readonly')
+  await user.click(within(dialog).getByRole('button', { name: 'Resgatar' }))
 
   expect(await within(dialog).findByRole('button', { name: 'Desfazer o resgate de 10/11/2026' })).toBeInTheDocument()
-  expect(within(dialog).queryByRole('button', { name: 'Resgatar parte' })).not.toBeInTheDocument()
+  expect(within(dialog).queryByRole('button', { name: 'Resgatar' })).not.toBeInTheDocument()
   expect(await api.sent('PUT /fixed-income/1/redemption')).toEqual([{ redeemed_on: '2026-11-10' }])
 })
 
@@ -130,18 +132,22 @@ test('partial redemptions can be deleted from the dialog', async () => {
   renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
-  await user.click(await screen.findByRole('button', { name: 'Resgatar ou apagar LCI Banco Y' }))
+  await user.click(await screen.findByRole('button', { name: 'Resgatar LCI Banco Y' }))
   await user.click(screen.getByRole('button', { name: 'Apagar resgate parcial de 01/06/2026' }))
   await vi.waitFor(() => expect(api.requests.some((r) => r.method === 'DELETE')).toBe(true))
 })
 
-test('deleting an investment asks first and closes the dialog', async () => {
+test('deleting an investment is in the edit form, asks first and closes it', async () => {
   fakeApi({ 'GET /fixed-income': { body: [fixedIncome()] }, 'DELETE /fixed-income/1': { status: 204 } })
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
-  await user.click(await screen.findByRole('button', { name: 'Resgatar ou apagar CDB Banco X' }))
+  await user.click(await screen.findByRole('button', { name: 'Resgatar CDB Banco X' }))
+  expect(screen.queryByRole('button', { name: 'Apagar aplicação' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Fechar' }))
+
+  await user.click(screen.getByRole('button', { name: 'Editar CDB Banco X' }))
   await user.click(screen.getByRole('button', { name: 'Apagar aplicação' }))
 
   expect(confirm).toHaveBeenCalledWith('Apagar a aplicação CDB Banco X, com os resgates dela?')

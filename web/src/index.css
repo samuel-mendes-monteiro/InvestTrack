@@ -460,6 +460,26 @@ h3 {
   flex: 1 1 160px;
 }
 
+/* A checkbox under the fields: a row of its own, sized to its text. */
+.inline-form label.check {
+  flex: 1 0 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.inline-form input[readonly] {
+  color: var(--muted);
+  background: transparent;
+}
+
+.inline-form label.check input {
+  width: auto;
+  margin: 0;
+}
+
 p.small {
   font-size: 0.85rem;
 }
@@ -772,14 +792,64 @@ table.positions .value {
   font-size: 0.95rem;
 }
 
+/* The label of the slice in focus: its name, with the swatch beside it. */
+.donut-center .donut-label {
+  display: inline-flex;
+  align-items: center;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut-center .donut-share {
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.donut-slice {
+  cursor: pointer;
+  outline: none;
+  transition: fill-opacity 0.15s;
+}
+
 .portfolio .legend {
   width: 100%;
   border-collapse: collapse;
 }
 
 .portfolio .legend td {
-  padding: 5px 0;
+  padding: 6px 0;
   border-bottom: 1px solid var(--border);
+}
+
+.portfolio .legend tr {
+  cursor: default;
+  transition: opacity 0.15s;
+}
+
+.portfolio .legend tr.faded {
+  opacity: 0.45;
+}
+
+.legend-share {
+  font-weight: 600;
+}
+
+/* Thin bar under the name: the share at a glance, without reading numbers. */
+.legend-bar {
+  display: block;
+  height: 3px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.legend-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
 }
 
 .portfolio .legend tr:last-child td {

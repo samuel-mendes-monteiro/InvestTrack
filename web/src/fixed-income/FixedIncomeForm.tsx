@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/errors'
 import {
   useCreateFixedIncome,
+  useDeleteFixedIncome,
   useUpdateFixedIncome,
   type FixedIncome,
   type FixedIncomeInput,
@@ -27,7 +28,8 @@ const asTyped = (value: string) => quantity(value).replace(/\./g, '')
 /**
  * A fixed income investment: a new one (inside NewOperationDialog), or
  * `investment` edited. Editing keeps its redemption and withdrawals; the API
- * refuses a change they would no longer fit.
+ * refuses a change they would no longer fit. Deleting it lives here too:
+ * it is about the investment itself, like editing, not about moving money.
  */
 export function FixedIncomeForm({ investment, onClose }: { investment?: FixedIncome; onClose: () => void }) {
   const today = todayIso()
@@ -41,7 +43,16 @@ export function FixedIncomeForm({ investment, onClose }: { investment?: FixedInc
   const [invalid, setInvalid] = useState<string | null>(null)
   const create = useCreateFixedIncome()
   const update = useUpdateFixedIncome()
+  const remove = useDeleteFixedIncome()
   const mutation = investment ? update : create
+  const busy = mutation.isPending || remove.isPending
+
+  function deleteInvestment() {
+    if (!investment) return
+    if (window.confirm(`Apagar a aplicação ${investment.name}, com os resgates dela?`)) {
+      remove.mutate(investment.id, { onSuccess: onClose })
+    }
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -66,7 +77,7 @@ export function FixedIncomeForm({ investment, onClose }: { investment?: FixedInc
     else create.mutate(body, { onSuccess: onClose })
   }
 
-  const failed = mutation.error
+  const failed = mutation.error ?? remove.error
   // When editing, "too large" means a withdrawal already made no longer fits the new numbers.
   const error =
     invalid ??
@@ -125,10 +136,15 @@ export function FixedIncomeForm({ investment, onClose }: { investment?: FixedInc
         </p>
       )}
       <div className="actions">
+        {investment && (
+          <button type="button" className="push-left danger" onClick={deleteInvestment} disabled={busy}>
+            Apagar aplicação
+          </button>
+        )}
         <button type="button" onClick={onClose}>
           Cancelar
         </button>
-        <button type="submit" className="primary" disabled={mutation.isPending}>
+        <button type="submit" className="primary" disabled={busy}>
           {investment ? 'Salvar alterações' : 'Registrar'}
         </button>
       </div>

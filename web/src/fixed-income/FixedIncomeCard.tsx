@@ -102,7 +102,7 @@ export function FixedIncomeCard() {
                     <button onClick={() => setEditingId(f.id)} aria-label={`Editar ${f.name}`}>
                       Editar
                     </button>
-                    <button onClick={() => setOpenId(f.id)} aria-label={`Resgatar ou apagar ${f.name}`}>
+                    <button onClick={() => setOpenId(f.id)} aria-label={`Resgatar ${f.name}`}>
                       Resgatar…
                     </button>
                   </div>

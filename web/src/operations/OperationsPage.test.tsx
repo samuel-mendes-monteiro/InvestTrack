@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { fakeApi } from '../test/fakeApi'
 import { renderWithApp } from '../test/render'
-import { operation } from '../test/samples'
+import { fixedIncome, operation } from '../test/samples'
 import { OperationForm } from './OperationForm'
 import { OperationsPage } from './OperationsPage'
 
@@ -17,7 +17,7 @@ test('lists operations and filters by ticker', async () => {
   renderWithApp(<OperationsPage />)
 
   expect(await screen.findByRole('row', { name: /VALE3/ })).toHaveTextContent('01/04/2026VendaVALE310R$ 60,50R$ 0,00')
-  await userEvent.selectOptions(screen.getByLabelText('Ticker'), 'PETR4')
+  await userEvent.selectOptions(screen.getByLabelText('Ativo'), 'PETR4')
   expect(screen.queryByRole('row', { name: /VALE3/ })).not.toBeInTheDocument()
   expect(screen.getByRole('row', { name: /PETR4/ })).toBeInTheDocument()
 })
@@ -36,9 +36,34 @@ test('totals what the table shows, exactly, newest operation first', async () =>
   expect(metric('Total vendido')).toHaveTextContent('R$ 605,00')
   expect(metric('Taxas pagas')).toHaveTextContent('R$ 4,90')
 
-  await userEvent.selectOptions(screen.getByLabelText('Ticker'), 'VALE3')
+  await userEvent.selectOptions(screen.getByLabelText('Ativo'), 'VALE3')
   expect(metric('Operações')).toHaveTextContent('1VALE3')
   expect(metric('Total comprado')).toHaveTextContent('R$ 0,00')
+})
+
+test('fixed income joins the history: application, redemptions and the end', async () => {
+  const cdb = fixedIncome({
+    start: '2026-01-05',
+    partial_redemptions: [{ id: 9, date: '2026-06-01', gross: '1000.00', iof: '0', ir: '20', net: '980' }],
+    redeemed_on: '2026-11-10',
+    status: 'REDEEMED',
+    gross: '4500.00',
+  })
+  fakeApi({ 'GET /operations': { body: OPERATIONS }, 'GET /fixed-income': { body: [cdb] }, 'GET /stock-events': { body: [] } })
+  renderWithApp(<OperationsPage />)
+  const metric = (label: string) => screen.getByText(label, { selector: '.metric-label' }).parentElement!
+
+  expect(await screen.findByRole('row', { name: /Aplicação/ })).toHaveTextContent('05/01/2026AplicaçãoCDB Banco X CDB———R$ 5.000,00')
+  expect(screen.getByRole('row', { name: /Resgate total/ })).toHaveTextContent('10/11/2026')
+  expect(screen.getByRole('row', { name: /01\/06\/2026/ })).toHaveTextContent('R$ 1.000,00')
+
+  await userEvent.selectOptions(screen.getByLabelText('Ativo'), 'CDB Banco X')
+  expect(metric('Operações')).toHaveTextContent('3CDB Banco X')
+  expect(metric('Total comprado')).toHaveTextContent('R$ 5.000,00')
+  expect(metric('Total vendido')).toHaveTextContent('R$ 5.500,00')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Editar CDB Banco X' }))
+  expect(screen.getByRole('dialog', { name: 'Editar CDB Banco X' })).toBeInTheDocument()
 })
 
 test('creating an operation sends exact decimals typed the Brazilian way', async () => {
