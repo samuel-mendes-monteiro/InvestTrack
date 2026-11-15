@@ -17,8 +17,8 @@ export function StockEvents() {
   const missingCost = events.data.some((e) => e.event_type === 'BONUS' && e.unit_cost == null)
 
   return (
-    <section>
-      <h2>Desdobramentos e bonificações</h2>
+    <section className="card" aria-labelledby="stock-events-title">
+      <h2 id="stock-events-title">Desdobramentos e bonificações</h2>
       <p className="muted">
         Aplicados automaticamente a partir dos eventos da B3, no fim da data com. Frações de ação são vendidas pela B3
         em leilão e não aparecem aqui.

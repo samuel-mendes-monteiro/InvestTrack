@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { brDate, brl, divideDecimal, isZero, multiplierToPercent, parseDecimal, wholePct, pct, perShare, quantity, sumDecimals, todayIso } from './format'
+import { brDate, brl, divideDecimal, isZero, multiplierToPercent, multiplyDecimals, parseDecimal, wholePct, pct, perShare, quantity, sumDecimals, todayIso } from './format'
 
 // Same cases as the Streamlit helpers' tests, so both frontends agree.
 describe('brl', () => {
@@ -96,4 +96,12 @@ test('wholePct rounds to a whole percentage', () => {
   expect(wholePct('112.5')).toBe('112%') // half to even
   expect(wholePct('1404.11')).toBe('1.404%')
   expect(wholePct(null)).toBe('—')
+})
+
+test('multiplies decimals exactly', () => {
+  expect(multiplyDecimals('100', '30.50')).toBe('3050.00')
+  expect(multiplyDecimals('0.1', '0.2')).toBe('0.02') // 0.020000000000000004 as Numbers
+  expect(multiplyDecimals('50.00000000', '39.32')).toBe('1966.0000000000')
+  expect(multiplyDecimals('-2', '1.5')).toBe('-3.0')
+  expect(multiplyDecimals('0E-8', '42.27')).toBe('0.0000000000')
 })

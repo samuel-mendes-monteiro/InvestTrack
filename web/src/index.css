@@ -1666,3 +1666,145 @@ a.button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* --- Operações -------------------------------------------------------------- */
+
+.chip.buy {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.chip.sell {
+  background: color-mix(in srgb, #f28e2b 18%, transparent);
+  color: #c4610a;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chip.sell {
+    color: #f5a35c;
+  }
+}
+
+.ops-head {
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.ops-head h2 {
+  margin: 0;
+}
+
+.ops-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+table.ops .op-ticker {
+  font-weight: 600;
+}
+
+table.ops .op-total {
+  font-weight: 600;
+}
+
+table.ops tbody tr:last-child > * {
+  border-bottom: none;
+}
+
+table.ops tbody tr:hover > * {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.row-actions button.danger {
+  border-color: color-mix(in srgb, var(--negative) 45%, var(--border));
+}
+
+.page .card > h2 {
+  margin: 0 0 8px;
+}
+
+.page .card > .alert {
+  margin: 0 0 12px;
+}
+
+/* Phones: each operation becomes a small card, like the positions. */
+@media (max-width: 640px) {
+  table.ops thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  table.ops,
+  table.ops tbody {
+    display: block;
+  }
+
+  table.ops tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'ticker total'
+      'type date'
+      'qty price'
+      'fees actions';
+    gap: 6px 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  table.ops tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  table.ops tbody tr:hover > * {
+    background: none;
+  }
+
+  table.ops tbody th,
+  table.ops tbody td {
+    padding: 0;
+    border: none;
+    text-align: left !important;
+  }
+
+  table.ops .op-ticker { grid-area: ticker; font-size: 1.05rem; }
+  table.ops .op-total { grid-area: total; font-size: 1.05rem; text-align: right !important; }
+  table.ops .op-type { grid-area: type; }
+  table.ops .op-date { grid-area: date; color: var(--muted); text-align: right !important; }
+  table.ops .op-qty { grid-area: qty; }
+  table.ops .op-price { grid-area: price; text-align: right !important; }
+  table.ops .op-fees { grid-area: fees; }
+  table.ops .op-actions { grid-area: actions; align-self: end; }
+
+  table.ops td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+}
+
+/* A page with nothing yet: what it is for, and the way to fill it. */
+.empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.empty-card h2 {
+  margin: 0;
+}
+
+.empty-card p {
+  max-width: 460px;
+  margin: 0;
+}

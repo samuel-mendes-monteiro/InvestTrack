@@ -22,6 +22,25 @@ test('lists operations and filters by ticker', async () => {
   expect(screen.getByRole('row', { name: /PETR4/ })).toBeInTheDocument()
 })
 
+test('totals what the table shows, exactly, newest operation first', async () => {
+  fakeApi({ 'GET /operations': { body: OPERATIONS }, 'GET /stock-events': { body: [] } })
+  renderWithApp(<OperationsPage />)
+  const metric = (label: string) => screen.getByText(label, { selector: '.metric-label' }).parentElement!
+
+  const table = await screen.findByRole('table', { name: 'Operações' })
+  const rows = within(table).getAllByRole('row').slice(1)
+  expect(rows.map((r) => within(r).getByRole('rowheader').textContent)).toEqual(['VALE3', 'PETR4'])
+  // A buy costs price x quantity plus fees; a sale brings in price x quantity minus fees.
+  expect(rows[1]).toHaveTextContent('R$ 3.004,90')
+  expect(metric('Total comprado')).toHaveTextContent('R$ 3.004,90')
+  expect(metric('Total vendido')).toHaveTextContent('R$ 605,00')
+  expect(metric('Taxas pagas')).toHaveTextContent('R$ 4,90')
+
+  await userEvent.selectOptions(screen.getByLabelText('Ticker'), 'VALE3')
+  expect(metric('Operações')).toHaveTextContent('1VALE3')
+  expect(metric('Total comprado')).toHaveTextContent('R$ 0,00')
+})
+
 test('creating an operation sends exact decimals typed the Brazilian way', async () => {
   const api = fakeApi({ 'POST /operations': { status: 201, body: operation() } })
   const onClose = vi.fn()

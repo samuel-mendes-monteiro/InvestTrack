@@ -134,6 +134,17 @@ export function sumDecimals(values: string[]): string {
   return (total < 0n ? '-' : '') + whole + (scale ? '.' + digits.slice(-scale) : '')
 }
 
+/** Exact product of two decimal strings: a quantity times a price, with no float in between. */
+export function multiplyDecimals(a: string, b: string): string {
+  const x = parts(a)
+  const y = parts(b)
+  const scale = x.fraction.length + y.fraction.length
+  const product = BigInt(x.whole + x.fraction) * BigInt(y.whole + y.fraction)
+  const digits = product.toString().padStart(scale + 1, '0')
+  const negative = x.negative !== y.negative && product !== 0n
+  return (negative ? '-' : '') + digits.slice(0, digits.length - scale) + (scale ? '.' + digits.slice(-scale) : '')
+}
+
 /** 'positive' / 'negative' for a decimal string, for coloring gains and losses. */
 export function toneOf(value: string | null | undefined): 'positive' | 'negative' | undefined {
   if (value == null || isZero(value)) return undefined
