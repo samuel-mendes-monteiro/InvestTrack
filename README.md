@@ -8,7 +8,7 @@
 
 > A personal investment portfolio tracker for the Brazilian stock market (B3), with live quotes and exact average-cost and profit calculations.
 
-![Portfolio view: totals, positions with live quotes and allocation chart](docs/portfolio.jpg)
+![Carteira: net worth, totals, cumulative return against CDI and Ibovespa, and the allocation](docs/portfolio.jpg)
 
 ## The problem
 
@@ -25,9 +25,13 @@ InvestTrack is a web app where each person, with their own account, records thei
 - how your portfolio is split across assets
 - fixed income (CDB, LCI, LCA) at % of CDI, pre-fixed or IPCA+, valued daily with IOF and regressive income tax, with partial redemptions
 - trades imported from **B3's trade statement** (Excel), with a preview and without duplicates
-- your **time-weighted return** since the first trade, compared with the CDI and the Ibovespa
+- your **time-weighted return** since the first trade or over the last 7 days, month, 6 months or year, compared with the CDI and the Ibovespa, split into what came from **prices** and what came from **income**, with a switch to leave income out
+- your **net worth over time** and the **gain** in each period: how much it grew beyond the money you put in, fees included
+- a price suggested as you type a trade: the current quote for today, or B3's official close for an earlier day
 
-![Performance view: time-weighted return against CDI and Ibovespa](docs/performance.jpg)
+![Rentabilidade: return split into prices and income, with the income switch](docs/performance.jpg)
+
+A new account is greeted with the ways to start (importing the statement, with a [step-by-step guide](web/src/help/ImportGuidePage.tsx), a first buy, or fixed income), and the profile page changes the password or deletes the account with all of its data. Visitors see a product page before the login.
 
 Quotes from B3 are fetched automatically from [brapi.dev](https://brapi.dev), and income events from B3's own website. Invalid operations, such as selling more shares than you own on that date, are refused with a clear message:
 
@@ -81,7 +85,7 @@ flowchart LR
 | [`investtrack/openapi.py`](investtrack/openapi.py) | Exports the API's OpenAPI schema, which the frontend's types are generated from |
 | [`web/src/api/`](web/src/api) | Typed API client: session token, error codes translated into Portuguese, one hook per endpoint |
 | [`web/src/format.ts`](web/src/format.ts) | Brazilian formatting of the API's decimal strings, exact (BigInt), never through a float |
-| [`web/src/`](web/src) | One folder per screen: portfolio, performance, operations, income, fixed income |
+| [`web/src/`](web/src) | One folder per screen: `portfolio` (Carteira, with the fixed income card), `networth` (Patrimônio), `performance` (Rentabilidade), `income`, `operations`, `profile`, `landing`, `help` |
 
 ## Calculation rules
 
@@ -135,6 +139,8 @@ IPCA+:      value = pre-fixed value × IPCA accumulated since the start
 - If redeemed today, a CDB pays IOF on the gain within 30 days (96% on day 1 down to 0% on day 30) and income tax on the rest of the gain: 22.5% up to 180 days, 20% up to 360, 17.5% up to 720 and 15% after that. LCI and LCA are tax exempt.
 - Applying is an inflow and redeeming an outflow, so fixed income joins the portfolio's value and its TWR. An LCI at 100% of the CDI earns exactly the CDI.
 - For IPCA+, each month's IPCA is spread over its calendar days. A month's IPCA only comes out around the 10th of the next one; until then the last published month is repeated and the value is flagged as an estimate. (Banks and the Tesouro use an anniversary date and business days; over whole months the result is the same.)
+- An investment applied after the last business day with a published CDI (today, or on a weekend) is worth exactly what was applied: no day has passed to earn anything or to owe tax.
+- Investments can be edited after the fact; their redemption and partial redemptions stay, and an edit they would no longer fit (a smaller amount than what was withdrawn, say) is refused.
 - **Partial redemptions** keep the rest running. Since the value grows in proportion to the money invested, withdrawing R from a value V leaves (1 − R/V) of everything, principal included. Each withdrawal pays tax on its own share of the gain, at the rate for the days since the start. A withdrawal must be smaller than the value on that day (taking everything is the full redemption) and on a business day with a known value.
 
 **Importing B3's trade statement** (Área do Investidor → Extratos → Negociação, in Excel) shows a preview first. Each row is:
@@ -157,6 +163,17 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 - Income counts as return, net of withheld tax.
 - Shares are valued at the official close of each day. A day without trades in an asset uses its last close.
 - The CDI is accumulated over the same days (each day's rate is earned overnight), and the Ibovespa from the close before the first trade.
+- The same TWR is also computed **without income**. That is the part that came from prices (and fees); for a single purchase it equals the position's result. The screen shows both as two parts that add up to the total, `Cotação +7,07% · Proventos +2,01%`, and a switch moves the chart to the price-only line.
+- A period (7D, 1M, 6M, 1A) is measured from the last close on or before its start: every series is rebased there, `(1 + R_end) / (1 + R_base) − 1`, which is exact for chained returns. 7 days are calendar days, so on a Friday it starts from the Friday before.
+
+**Net worth and gain.** The net worth chart shows, at each close, the stocks at that close plus fixed income **net** of taxes (the same number as the Patrimônio card), and a last point for **now**, with live quotes, so a sale or redemption made today shows at once. Its headline is the gain, not the change:
+
+```
+money_in = buys (with fees) − sales (net of fees) + fixed income applied − redeemed
+gain     = (net_worth_end − net_worth_start) − (money_in_end − money_in_start)
+```
+
+Over the whole history it starts from nothing, so the first purchase, fees included, counts as money put in: buying at R$ 1,966.00 plus R$ 7.90 of fees and being worth R$ 2,113.50 is a gain of R$ 139.60, the same as the position's result, not R$ 147.50. Income paid out leaves the portfolio as cash, so it is not part of this gain (it is part of the return above).
 
 ## Technical decisions
 
@@ -194,6 +211,9 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 - **The server owns the data, the browser caches it.** TanStack Query keeps one cache of what the API returned; screens read from it instead of copying it into component state. After any change everything is refetched: one trade moves positions, computed income, stock events and the TWR, and only the API knows how. Screens that wait for a background download (CDI, history) poll until it ends instead of asking the user to reload.
 - **Same origin, no CORS.** The API lives under `/api` and the same server sends the web app for every other path (in development, Vite forwards `/api` to uvicorn). Reloading `/proventos` gets `index.html`, and the React router shows the page. Built files have a hash in their names, so they are cached forever; `index.html` is never cached, so a deploy shows at once. Logging out or an expired session (any `401`) empties the cache, so the next person on the same browser never sees cached data.
 - **The session is an HttpOnly cookie, not a token in JavaScript.** Until v1.0 the token was kept in `localStorage`, where any script injected into the page could read it. Now the login sets a cookie that is `HttpOnly` (scripts can't read it, and the token is never in a response body), `SameSite=Strict` (the browser doesn't send it on requests started by another site, which is what a CSRF attack needs), `Secure` over HTTPS, and limited to `/api`. The app can't see the cookie, so on startup it asks `/api/auth/me` whether it is logged in.
+- **An unknown total is shown as unknown.** While the CDI history is still downloading, an investment has no value yet. Summing only the valued ones would show a smaller net worth as if it were right, so `/portfolio` returns `fixed_income: null` and `syncing: true`, the Carteira shows "—" with a notice, and asks again until the value is known.
+- **Quantities times prices are exact in the browser too.** `multiplyDecimals` multiplies the decimal strings with `BigInt` (an operation's total, quantity × price ± fees), so `0.1 × 0.2` is `0.02`, not `0.020000000000000004`.
+- **Changing the password or deleting the account asks for the password**, so a session left open on someone else's computer is not enough. A wrong one answers `403`, not `401`: any `401` means "no session" and logs the app out. Changing the password ends every other session; deleting the account removes its rows one table at a time, since SQLite only cascades deletes with foreign keys switched on.
 - **One container, one machine.** The [Dockerfile](Dockerfile) builds the React app with Node in a first stage and copies only the result into the Python image. The server runs as an unprivileged user; the database is a SQLite file on a persistent volume. That rules out a second machine (they can't share a file), and that is fine for one person's portfolio; `DATABASE_URL` can point at PostgreSQL instead. Behind Fly's proxy, uvicorn trusts the forwarded headers, so the login limit sees each client's own IP and the cookie is marked `Secure`.
 
 ## Testing
@@ -202,13 +222,13 @@ TWR          = (1 + r₁) × (1 + r₂) × … − 1
 pytest --cov
 ```
 
-416 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota.
+442 tests, 98% coverage. Tests never touch the internet: the HTTP session, the quote source and even the clock are replaced by fakes, so they are fast, deterministic and don't spend the API quota.
 
 ```bash
 cd web && npm test
 ```
 
-82 frontend tests ([Vitest](https://vitest.dev) and Testing Library) drive the screens like a user (typing, clicking, uploading a statement) against a fake API, and check what is shown and what is sent.
+108 frontend tests ([Vitest](https://vitest.dev) and Testing Library) drive the screens like a user (typing, clicking, uploading a statement) against a fake API, and check what is shown and what is sent.
 
 Every push runs, with [GitHub Actions](.github/workflows/ci.yml), the linter, the formatter check and the tests on Python 3.12 and 3.14, and the frontend's linter, type check, tests and build, and builds the Docker image.
 
@@ -297,7 +317,9 @@ Every route is under `/api`. All except `/api/health`, `/api/auth/register` and 
 | `POST` | `/auth/register` | Create an account (409 if the email is taken) |
 | `POST` | `/auth/login` | Start a session, valid for 30 days, in an HttpOnly cookie (429 after too many failures) |
 | `POST` | `/auth/logout` | End the session |
-| `GET` | `/auth/me` | The logged-in user |
+| `GET` | `/auth/me` | The logged-in user, and since when the account exists |
+| `POST` | `/auth/password` | Change the password (403 if the current one is wrong); ends every other session |
+| `POST` | `/auth/delete-account` | Delete the account and all of its data, after the password |
 | `POST` | `/operations` | Record a buy or sell (422 if selling more than owned) |
 | `GET` | `/operations` | List operations, optionally filtered by `?ticker=` |
 | `PUT` | `/operations/{id}` | Edit an operation, e.g. to add the fees of an imported trade (409 if a sale or an income would be left without shares) |
@@ -309,16 +331,18 @@ Every route is under `/api`. All except `/api/health`, `/api/auth/register` and 
 | `GET` | `/stock-events` | Splits, reverse splits and bonus shares that changed one of your positions |
 | `PUT` | `/stock-events/{ticker}/{date}/unit-cost` | Attributed cost of a bonus event (404 if there is no bonus on that date) |
 | `DELETE` | `/stock-events/{ticker}/{date}/unit-cost` | Back to zero cost |
-| `GET` | `/portfolio` | Positions, live prices, income received and portfolio totals |
+| `GET` | `/portfolio` | Positions, live prices, income received and portfolio totals (`syncing` while fixed income is being valued) |
+| `GET` | `/prices/{ticker}` | Price for a new trade: the current quote, or B3's close for an earlier `?date=` (404 if unknown) |
 | `POST` | `/fixed-income` | Register a CDB, LCI or LCA: % of CDI, pre-fixed or IPCA+ |
 | `GET` | `/fixed-income` | Each investment with gross value, IOF, income tax and net value |
+| `PUT` | `/fixed-income/{id}` | Edit an investment (422 if a withdrawal no longer fits) |
 | `PUT` | `/fixed-income/{id}/redemption` | Early redemption on a date (`null` undoes it) |
 | `POST` | `/fixed-income/{id}/partial-redemptions` | Withdraw part of an investment (422 if not less than its value that day) |
 | `DELETE` | `/fixed-income/{id}/partial-redemptions/{rid}` | Undo a partial redemption |
 | `DELETE` | `/fixed-income/{id}` | Delete an investment |
 | `POST` | `/imports/b3/preview` | What importing a B3 trade statement (raw `.xlsx` body) would add; saves nothing |
 | `POST` | `/imports/b3` | Import the statement's new trades in one transaction |
-| `GET` | `/performance` | Daily TWR, CDI and Ibovespa since the first trade (downloads missing history in the background) |
+| `GET` | `/performance` | Daily TWR (with and without income), CDI, Ibovespa, net worth and money put in, for `?period=7D`, `1M`, `6M`, `1Y` or `ALL` (downloads missing history in the background) |
 | `GET` | `/health` | Health check |
 
 ### Configuration
@@ -349,6 +373,7 @@ Every route is under `/api`. All except `/api/health`, `/api/auth/register` and 
 - [x] **v0.7:** partial redemptions and IPCA+ fixed income, editing operations, login rate limiting
 - [x] **v1.0:** React + TypeScript frontend, typed from the API's OpenAPI schema
 - [x] **v1.0:** deployment with Docker on Fly.io, session in an HttpOnly cookie
+- [x] **v1.1:** redesigned screens, Patrimônio page with the gain net of deposits, return split into prices and income, product page, onboarding and import guide, price suggestions, profile with password change and account deletion, editable fixed income
 
 ## License
 
