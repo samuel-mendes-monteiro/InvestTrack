@@ -33,13 +33,6 @@ export function PerformancePage() {
         !perf.syncing && <p className="muted">Registre uma compra para ver a rentabilidade.</p>
       ) : (
         <>
-          <div className="metrics">
-            <Metric label="Carteira" value={pct(perf.twr)} tone={toneOf(perf.twr)} />
-            <Metric label="CDI" value={pct(perf.cdi)} />
-            <Metric label="Ibovespa" value={pct(perf.ibovespa)} />
-            <Metric label="% do CDI" value={wholePct(perf.pct_of_cdi)} help="Rentabilidade da carteira dividida pela do CDI." />
-          </div>
-
           {/* The same frame as the Carteira's net worth chart: title and periods on top, a summary line, the chart. */}
           <section className="card chart-card" aria-labelledby="twr-title">
             <div className="card-head">
@@ -70,6 +63,14 @@ export function PerformancePage() {
               <PerformanceChart points={perf.points} />
             </div>
           </section>
+
+          {/* Under the chart: the period's final numbers, once the curve shows how they got there. */}
+          <div className="metrics">
+            <Metric label="Carteira" value={pct(perf.twr)} tone={toneOf(perf.twr)} />
+            <Metric label="CDI" value={pct(perf.cdi)} />
+            <Metric label="Ibovespa" value={pct(perf.ibovespa)} />
+            <Metric label="% do CDI" value={wholePct(perf.pct_of_cdi)} help="Rentabilidade da carteira dividida pela do CDI." />
+          </div>
         </>
       )}
     </div>
