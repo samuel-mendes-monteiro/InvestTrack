@@ -5,7 +5,8 @@
 # wakes the service up in about a minute.
 services:
   - type: web
-    name: investtrack
+    # Also the address: invest-track.onrender.com ("investtrack" is taken).
+    name: invest-track
     runtime: docker
     plan: free
     # Same region as the Neon database (AWS us-east-1): every page makes
