@@ -71,7 +71,7 @@ def test_v04_database_keeps_its_data_and_gets_owners(v04):
     engine = v04
     init_db(engine)
     with engine.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0005"
         quantity, owner = c.execute(text("SELECT quantity, user_id FROM operations")).one()
         assert (Decimal(quantity), owner) == (Decimal("100"), None)
         ticker, unit_cost = c.execute(text("SELECT ticker, unit_cost FROM bonus_costs")).one()

@@ -19,12 +19,7 @@ export function LoginPage({ notice, initialTab = 'login' }: { notice: string | n
 
   return (
     <main className="narrow">
-      <h1>
-        <Link to="/" className="brand-link" title="Voltar à página inicial">
-          <LogoMark />
-          InvestTrack
-        </Link>
-      </h1>
+      <BrandTitle />
       {notice && <p className="alert warning">{notice}</p>}
       <div role="tablist" className="tabs">
         {(['login', 'register'] as const).map((t) => (
@@ -45,6 +40,18 @@ export function LoginPage({ notice, initialTab = 'login' }: { notice: string | n
         {tab === 'login' ? <LoginForm key="login" /> : <RegisterForm key="register" />}
       </section>
     </main>
+  )
+}
+
+/** The logo, back to the product page: the top of every screen before the login. */
+export function BrandTitle() {
+  return (
+    <h1>
+      <Link to="/" className="brand-link" title="Voltar à página inicial">
+        <LogoMark />
+        InvestTrack
+      </Link>
+    </h1>
   )
 }
 
@@ -81,6 +88,9 @@ function LoginForm() {
       <button type="submit" className="primary" disabled={mutation.isPending}>
         {mutation.isPending ? 'Entrando…' : 'Entrar'}
       </button>
+      <Link to="/esqueci-senha" className="center">
+        Esqueci minha senha
+      </Link>
     </form>
   )
 }

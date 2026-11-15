@@ -39,6 +39,7 @@ const FIELD_NAMES: Record<string, string> = {
   gross: 'Valor do resgate',
   email: 'E-mail',
   password: 'Senha',
+  new_password: 'Nova senha',
 }
 
 // The fixed-income module's validation messages, which come without their own code.
@@ -78,6 +79,12 @@ export function domainMessage(d: ErrorDetail): string {
       const minutes = Math.max(1, Math.ceil((d.retry_after ?? 60) / 60))
       return `Muitas tentativas de login erradas. Tente de novo em ${minutes} minuto${minutes > 1 ? 's' : ''}.`
     }
+    case 'TOO_MANY_RESET_REQUESTS': {
+      const minutes = Math.max(1, Math.ceil((d.retry_after ?? 60) / 60))
+      return `Muitos pedidos de redefinição de senha. Tente de novo em ${minutes} minuto${minutes > 1 ? 's' : ''}.`
+    }
+    case 'INVALID_RESET_TOKEN':
+      return 'Esse link não vale mais: ele expira em 30 minutos e funciona uma vez só. Peça um novo.'
     case 'EMAIL_TAKEN':
       return 'Já existe uma conta com esse e-mail.'
     case 'WRONG_PASSWORD':

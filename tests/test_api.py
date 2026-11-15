@@ -11,11 +11,23 @@ from investtrack.api import create_app
 from investtrack.api.deps import SESSION_COOKIE
 from investtrack.core.income import IncomeEvent, IncomeType
 from investtrack.core.portfolio import StockEvent, StockEventType
+from investtrack.sources.email import Email, EmailUnavailableError
 from investtrack.storage.events import StaticEvents
 from investtrack.storage.market_data import StaticMarketData
 from investtrack.storage.prices import StaticPriceProvider
 from tests.conftest import fresh_engine
 from tests.test_b3_statement import statement, trade
+
+
+class FakeMailer:
+    """Keeps the messages instead of sending them."""
+
+    def __init__(self):
+        self.sent: list[Email] = []
+
+    def send(self, email: Email) -> None:
+        self.sent.append(email)
+
 
 PRICES = StaticPriceProvider({"PETR4": Decimal("38"), "HGLG11": Decimal("160")})
 
@@ -44,6 +56,8 @@ def api_client(**overrides):
         "events": StaticEvents(),
         "market_data": StaticMarketData(),
         "password_hasher": FAST_HASHER,
+        "mailer": FakeMailer(),
+        "public_url": "https://investtrack.example",
     }
     settings.update(overrides)
     try:
@@ -1017,7 +1031,13 @@ def test_net_worth_over_time_ends_where_the_portfolio_is(fi_client):
 
 # --- accounts and isolation --------------------------------------------------
 
-PUBLIC = {("GET", "/health"), ("POST", "/auth/register"), ("POST", "/auth/login")}
+PUBLIC = {
+    ("GET", "/health"),
+    ("POST", "/auth/register"),
+    ("POST", "/auth/login"),
+    ("POST", "/auth/password-reset"),
+    ("POST", "/auth/password-reset/confirm"),
+}
 
 
 def all_routes():
@@ -1199,6 +1219,76 @@ def test_change_password(client):
     assert client.get("/auth/me").status_code == 200  # this session goes on
     login = {"email": "ana@example.com", "password": "a new one!"}
     assert client.post("/auth/login", json=login).status_code == 200
+
+
+# --- password reset -----------------------------------------------------------
+
+
+def reset_link_token(mailer: FakeMailer) -> str:
+    (email,) = mailer.sent
+    match = re.search(r"https://investtrack\.example/redefinir-senha#token=([\w-]+)", email.text)
+    assert match, email.text
+    assert match.group(0) in email.html
+    return match.group(1)
+
+
+def test_password_reset_by_email():
+    mailer = FakeMailer()
+    with api_client(mailer=mailer) as c:
+        r = c.post("/auth/password-reset", json={"email": "ANA@example.com"})
+        assert r.status_code == 204
+        assert mailer.sent[0].to == "ana@example.com"
+        token = reset_link_token(mailer)
+
+        r = c.post("/auth/password-reset/confirm", json={"token": token, "new_password": "short"})
+        assert (r.status_code, r.json()["detail"]["code"]) == (422, "WEAK_PASSWORD")
+        new = {"token": token, "new_password": "a new one!"}
+        assert c.post("/auth/password-reset/confirm", json=new).status_code == 204
+
+        assert c.get("/auth/me").status_code == 401  # every session ended, this one too
+        login = {"email": "ana@example.com", "password": "a new one!"}
+        assert c.post("/auth/login", json=login).status_code == 200
+        again = c.post("/auth/password-reset/confirm", json=new)
+        assert (again.status_code, again.json()["detail"]["code"]) == (400, "INVALID_RESET_TOKEN")
+
+
+def test_password_reset_answers_the_same_for_unknown_emails():
+    mailer = FakeMailer()
+    with api_client(mailer=mailer) as c:
+        r = c.post("/auth/password-reset", json={"email": "nobody@example.com"})
+    assert (r.status_code, r.content) == (204, b"")
+    assert mailer.sent == []
+
+
+def test_password_reset_link_ignores_the_host_header():
+    mailer = FakeMailer()
+    with api_client(mailer=mailer) as c:
+        c.post(
+            "/auth/password-reset",
+            json={"email": "ana@example.com"},
+            headers={"Host": "evil.example"},
+        )
+    reset_link_token(mailer)  # still the configured site
+    assert "evil" not in mailer.sent[0].text
+
+
+def test_password_reset_requests_are_throttled():
+    with api_client() as c:
+        for _ in range(3):
+            c.post("/auth/password-reset", json={"email": "ana@example.com"})
+        r = c.post("/auth/password-reset", json={"email": "ana@example.com"})
+    assert (r.status_code, r.json()["detail"]["code"]) == (429, "TOO_MANY_RESET_REQUESTS")
+    assert r.headers["Retry-After"]
+
+
+def test_a_failing_mailer_does_not_change_the_answer():
+    class Down:
+        def send(self, email):
+            raise EmailUnavailableError("provider down")
+
+    with api_client(mailer=Down()) as c:
+        r = c.post("/auth/password-reset", json={"email": "ana@example.com"})
+    assert r.status_code == 204
 
 
 # --- B3 statement import -----------------------------------------------------

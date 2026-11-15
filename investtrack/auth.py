@@ -10,6 +10,9 @@ the database keeps only its SHA-256. Logging out deletes the row, which a
 JWT can't do without a list of revoked tokens. A plain SHA-256 is enough
 here (unlike passwords) because the token has 256 random bits: there is
 nothing to guess.
+
+Password resets: a "forgot my password" link carries a token made and
+stored the same way, valid for RESET_MINUTES and only once.
 """
 
 import hashlib
@@ -32,12 +35,16 @@ from investtrack.storage.models import (
     IncomeRecord,
     OperationRecord,
     PartialRedemptionRecord,
+    PasswordResetToken,
     User,
 )
 
 MIN_PASSWORD = 8  # NIST SP 800-63B: at least 8, and allow long passphrases
 MAX_PASSWORD = 256  # hashing has a cost: an unbounded input is a cheap attack
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Long enough to open the email, short enough that a link left in an old
+# inbox (or a forwarded message) is no longer a key to the account.
+RESET_MINUTES = 30
 
 
 class EmailTakenError(ValueError):
@@ -54,6 +61,17 @@ class WeakPasswordError(ValueError):
 
 class InvalidEmailError(ValueError):
     pass
+
+
+class InvalidResetTokenError(ValueError):
+    """Unknown, expired or already used reset link. Deliberately doesn't say which."""
+
+
+def check_password_length(password: str) -> None:
+    if not MIN_PASSWORD <= len(password) <= MAX_PASSWORD:
+        raise WeakPasswordError(
+            f"password must have between {MIN_PASSWORD} and {MAX_PASSWORD} characters"
+        )
 
 
 def _utc_now() -> datetime:
@@ -154,8 +172,14 @@ class Auth:
         session_days: int = 30,
         clock: Callable[[], datetime] = _utc_now,
         throttle: LoginThrottle | None = None,
+        reset_throttle: LoginThrottle | None = None,
     ):
         self.throttle = throttle or LoginThrottle(clock=clock)
+        # Each reset request sends an email: without a limit, anyone could
+        # flood someone's inbox (and spend the provider's daily quota).
+        self.reset_throttle = reset_throttle or LoginThrottle(
+            per_account=3, per_ip=10, window=timedelta(hours=1), clock=clock
+        )
         # Tests pass a cheap hasher; the default parameters are argon2-cffi's,
         # which follow RFC 9106's recommendations.
         self._hasher = hasher or PasswordHasher()
@@ -169,10 +193,7 @@ class Auth:
     def register(self, session: Session, email: str, password: str) -> User:
         """Create an account. The very first one adopts the data from before v0.5."""
         email = normalize_email(email)
-        if not MIN_PASSWORD <= len(password) <= MAX_PASSWORD:
-            raise WeakPasswordError(
-                f"password must have between {MIN_PASSWORD} and {MAX_PASSWORD} characters"
-            )
+        check_password_length(password)
         if session.scalar(select(User).where(User.email == email)):
             raise EmailTakenError("email already registered")
 
@@ -254,10 +275,7 @@ class Auth:
         leaked, whoever used it is logged out. Wrong guesses count in the same
         throttle as logins, so this isn't a way around it.
         """
-        if not MIN_PASSWORD <= len(new) <= MAX_PASSWORD:
-            raise WeakPasswordError(
-                f"password must have between {MIN_PASSWORD} and {MAX_PASSWORD} characters"
-            )
+        check_password_length(new)
         self.throttle.check(user.email, ip)
         try:
             self._hasher.verify(user.password_hash, current)
@@ -298,11 +316,71 @@ class Auth:
                 PartialRedemptionRecord.fixed_income_id.in_(owned)
             )
         )
-        for model in (FixedIncomeRecord, OperationRecord, IncomeRecord, BonusCost, AuthSession):
+        for model in (
+            FixedIncomeRecord,
+            OperationRecord,
+            IncomeRecord,
+            BonusCost,
+            AuthSession,
+            PasswordResetToken,
+        ):
             session.execute(delete(model).where(model.user_id == user.id))
         session.delete(user)
         session.commit()
 
     def logout(self, session: Session, token: str) -> None:
         session.execute(delete(AuthSession).where(AuthSession.token_hash == hash_token(token)))
+        session.commit()
+
+    def request_password_reset(
+        self, session: Session, email: str, ip: str = ""
+    ) -> tuple[str, str] | None:
+        """(the account's email, a new reset token), or None if there is no such account.
+
+        The caller must answer the same way in both cases, and send the email
+        outside the request, so neither the answer nor its timing tells
+        whether an email has an account. Every request counts in the throttle,
+        whether the account exists or not, for the same reason. A new link
+        replaces the older ones: only the latest email works.
+        """
+        self.reset_throttle.check(email, ip)
+        self.reset_throttle.failed(email, ip)  # "failed" here just means "counted"
+        try:
+            email = normalize_email(email)
+        except InvalidEmailError:
+            return None
+        user = session.scalar(select(User).where(User.email == email))
+        if user is None:
+            return None
+
+        token = secrets.token_urlsafe(32)
+        now = self._clock()
+        session.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
+        session.add(
+            PasswordResetToken(
+                token_hash=hash_token(token),
+                user_id=user.id,
+                created_at=now,
+                expires_at=now + timedelta(minutes=RESET_MINUTES),
+            )
+        )
+        session.commit()
+        return user.email, token
+
+    def reset_password(self, session: Session, token: str, new: str) -> None:
+        """Set a new password from a reset link, and end every session.
+
+        The length is checked first, so a too short password doesn't spend
+        the link. Guessing tokens needs no throttle: there are 2^256 of them.
+        Every session ends: whoever asks for a reset may think someone else
+        got in, and here there is no "current" session worth keeping.
+        """
+        check_password_length(new)
+        record = session.get(PasswordResetToken, hash_token(token))
+        if record is None or as_utc(record.expires_at) <= self._clock():
+            raise InvalidResetTokenError("invalid or expired reset link")
+        user = session.get(User, record.user_id)
+        user.password_hash = self._hasher.hash(new)
+        for model in (PasswordResetToken, AuthSession):
+            session.execute(delete(model).where(model.user_id == user.id))
         session.commit()

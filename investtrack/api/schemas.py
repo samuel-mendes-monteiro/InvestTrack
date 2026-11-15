@@ -121,6 +121,15 @@ class PasswordChange(BaseModel):
     new_password: str = Field(max_length=256)  # the length rules live in auth.py
 
 
+class PasswordResetRequest(BaseModel):
+    email: str = Field(max_length=254, examples=["ana@example.com"])
+
+
+class PasswordReset(BaseModel):
+    token: str = Field(max_length=100, description="From the link in the email")
+    new_password: str = Field(max_length=256)  # the length rules live in auth.py
+
+
 class SessionOut(BaseModel):
     # The token itself goes only in the HttpOnly cookie, never in the body:
     # a script that can read responses still can't read the session.

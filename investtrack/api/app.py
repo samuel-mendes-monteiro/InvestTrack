@@ -27,6 +27,7 @@ from investtrack.api.web import serve_web
 from investtrack.auth import Auth
 from investtrack.sources.b3 import B3Client
 from investtrack.sources.brapi import BrapiClient
+from investtrack.sources.email import ConsoleMailer, Mailer, ResendMailer
 from investtrack.storage.db import create_db_engine, init_db
 from investtrack.storage.events import EventSource, StoredEvents
 from investtrack.storage.market_data import MarketData, MarketDataSource
@@ -56,6 +57,17 @@ def default_price_provider(engine: Engine) -> PriceProvider:
     return CachedPriceProvider(engine, client.fetch_price, ttl=ttl)
 
 
+def default_mailer() -> Mailer:
+    """Resend when RESEND_API_KEY is set; otherwise messages only go to the
+    log (development). MAIL_FROM must be an address on a domain verified at
+    Resend, or it refuses to send."""
+    key = os.getenv("RESEND_API_KEY")
+    if not key:
+        return ConsoleMailer()
+    sender = os.getenv("MAIL_FROM", "InvestTrack <nao-responda@investtrack.online>")
+    return ResendMailer(key, sender)
+
+
 def health(session: SessionDep) -> dict[str, str]:
     session.execute(text("SELECT 1"))  # fails if the database is unreachable
     return {"status": "ok"}
@@ -68,6 +80,8 @@ def create_app(
     market_data: MarketDataSource | None = None,
     password_hasher: PasswordHasher | None = None,
     web_dir: Path | None = None,
+    mailer: Mailer | None = None,
+    public_url: str | None = None,
 ) -> FastAPI:
     """Build the app. Tests pass their own engine, prices, events, history
     and a cheap password hasher.
@@ -76,6 +90,12 @@ def create_app(
     (web/dist): served from the same origin as the API, so the browser needs
     no CORS and the session cookie can be SameSite=Strict. In development it
     is left out and Vite serves the app instead.
+
+    `public_url` (or PUBLIC_URL) is where the site lives, for links sent by
+    email. It is configured, never read from the request: the Host header
+    is whatever the client sends, so an attacker could ask for a reset of
+    someone's account with Host: evil.example and the victim would get a
+    real email linking to the attacker's site, token included.
     """
 
     @asynccontextmanager
@@ -87,6 +107,10 @@ def create_app(
         app.state.events = events or StoredEvents(app.state.engine, B3Client().fetch_events)
         app.state.market_data = market_data or MarketData(app.state.engine)
         app.state.auth = Auth(hasher=password_hasher)
+        app.state.mailer = mailer or default_mailer()
+        app.state.public_url = (
+            public_url or os.getenv("PUBLIC_URL", "http://localhost:5173")
+        ).rstrip("/")
         init_db(app.state.engine)
         yield
         if engine is None:  # only close what this app created: a given engine may be shared

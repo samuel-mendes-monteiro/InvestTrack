@@ -1,14 +1,19 @@
 """Accounts and sessions: register, log in and out, password, deletion."""
 
-from fastapi import APIRouter, Request, Response, status
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, Request, Response, status
 
 from investtrack.api.deps import SESSION_COOKIE, SessionDep, UserDep, client_ip, session_token
+from investtrack.api.emails import password_reset_email
 from investtrack.api.errors import api_error
 from investtrack.api.schemas import (
     AccountDeletion,
     Credentials,
     ErrorOut,
     PasswordChange,
+    PasswordReset,
+    PasswordResetRequest,
     SessionOut,
     UserOut,
 )
@@ -17,11 +22,14 @@ from investtrack.auth import (
     EmailTakenError,
     InvalidCredentialsError,
     InvalidEmailError,
+    InvalidResetTokenError,
     TooManyAttemptsError,
     WeakPasswordError,
 )
+from investtrack.sources.email import Email, EmailUnavailableError, Mailer
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def drop_session_cookie(response: Response) -> None:
@@ -147,3 +155,65 @@ def change_password(
         raise api_error(422, "WEAK_PASSWORD", e) from e
     except TooManyAttemptsError as e:
         raise api_error(429, "TOO_MANY_ATTEMPTS", e) from e
+
+
+def send_quietly(mailer: Mailer, email: Email) -> None:
+    """Runs after the response is gone, so a failure can't reach the client
+    (who must not learn whether the account exists anyway): log it."""
+    try:
+        mailer.send(email)
+    except EmailUnavailableError:
+        logger.exception("could not send the password reset email")
+
+
+@router.post(
+    "/password-reset",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={429: {"model": ErrorOut, "description": "Too many reset requests"}},
+)
+def request_password_reset(
+    payload: PasswordResetRequest,
+    session: SessionDep,
+    request: Request,
+    background: BackgroundTasks,
+) -> None:
+    """Email a link to set a new password.
+
+    Always 204, whether the email has an account or not: otherwise this
+    would tell anyone which emails are registered. The email is sent after
+    the response, so the time taken doesn't tell either.
+    """
+    try:
+        found = request.app.state.auth.request_password_reset(
+            session, payload.email, client_ip(request)
+        )
+    except TooManyAttemptsError as e:
+        raise api_error(429, "TOO_MANY_RESET_REQUESTS", e) from e
+    if found:
+        email, token = found
+        # In the fragment (#), not the query (?): browsers never send the
+        # fragment to a server, so the token stays out of access logs and
+        # of the Referer header. The page reads it and sends it in a POST.
+        link = f"{request.app.state.public_url}/redefinir-senha#token={token}"
+        background.add_task(
+            send_quietly, request.app.state.mailer, password_reset_email(email, link)
+        )
+
+
+@router.post(
+    "/password-reset/confirm",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        400: {"model": ErrorOut, "description": "Unknown, expired or used link"},
+        422: {"model": ErrorOut, "description": "Weak new password"},
+    },
+)
+def reset_password(payload: PasswordReset, session: SessionDep, request: Request) -> None:
+    """Set the new password. Every session of the account ends, so the user
+    logs in again with it."""
+    try:
+        request.app.state.auth.reset_password(session, payload.token, payload.new_password)
+    except WeakPasswordError as e:
+        raise api_error(422, "WEAK_PASSWORD", e) from e
+    except InvalidResetTokenError as e:
+        raise api_error(400, "INVALID_RESET_TOKEN", e) from e

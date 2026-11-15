@@ -13,6 +13,7 @@ from investtrack.auth import (
     EmailTakenError,
     InvalidCredentialsError,
     InvalidEmailError,
+    InvalidResetTokenError,
     LoginThrottle,
     TooManyAttemptsError,
     WeakPasswordError,
@@ -20,7 +21,13 @@ from investtrack.auth import (
 )
 from investtrack.core.portfolio import AssetType, OpType
 from investtrack.storage.db import init_db
-from investtrack.storage.models import Asset, AuthSession, OperationRecord, User
+from investtrack.storage.models import (
+    Asset,
+    AuthSession,
+    OperationRecord,
+    PasswordResetToken,
+    User,
+)
 from tests.conftest import fresh_engine
 
 # Real Argon2id, with the cheapest parameters: tests stay fast.
@@ -271,3 +278,86 @@ def test_one_ip_trying_many_emails_is_blocked(session, auth):
     with pytest.raises(TooManyAttemptsError):
         auth.login(session, "new@x.com", "anything", "1.1.1.1")
     fail(session, auth, 1, email="new@x.com", ip="2.2.2.2")  # other IPs unaffected
+
+
+# --- password reset -----------------------------------------------------------
+
+
+def test_reset_sets_the_password_and_ends_every_session(session, auth):
+    auth.register(session, "ana@x.com", "long enough")
+    old_session, _ = auth.login(session, "ana@x.com", "long enough")
+    email, token = auth.request_password_reset(session, " Ana@X.com")
+    assert email == "ana@x.com"
+    # Only the hash is stored, like session tokens.
+    assert session.scalars(select(PasswordResetToken.token_hash)).all() == [hash_token(token)]
+
+    auth.reset_password(session, token, "a new passphrase")
+
+    assert auth.user_for_token(session, old_session) is None
+    with pytest.raises(InvalidCredentialsError):
+        auth.login(session, "ana@x.com", "long enough")
+    auth.login(session, "ana@x.com", "a new passphrase")
+
+
+def test_unknown_emails_get_no_token(session, auth):
+    auth.register(session, "ana@x.com", "long enough")
+    assert auth.request_password_reset(session, "bia@x.com") is None
+    assert auth.request_password_reset(session, "not an email") is None
+    assert session.scalar(select(PasswordResetToken)) is None
+
+
+def test_a_reset_link_works_once(session, auth):
+    auth.register(session, "ana@x.com", "long enough")
+    _, token = auth.request_password_reset(session, "ana@x.com")
+    auth.reset_password(session, token, "a new passphrase")
+    with pytest.raises(InvalidResetTokenError):
+        auth.reset_password(session, token, "another passphrase")
+
+
+def test_a_reset_link_expires(session, auth, clock):
+    auth.register(session, "ana@x.com", "long enough")
+    _, token = auth.request_password_reset(session, "ana@x.com")
+    clock.now += timedelta(minutes=30)
+    with pytest.raises(InvalidResetTokenError):
+        auth.reset_password(session, token, "a new passphrase")
+    auth.login(session, "ana@x.com", "long enough")  # unchanged
+
+
+def test_a_new_link_replaces_the_old_one(session, auth):
+    auth.register(session, "ana@x.com", "long enough")
+    _, first = auth.request_password_reset(session, "ana@x.com")
+    _, second = auth.request_password_reset(session, "ana@x.com")
+    with pytest.raises(InvalidResetTokenError):
+        auth.reset_password(session, first, "a new passphrase")
+    auth.reset_password(session, second, "a new passphrase")
+
+
+def test_a_weak_password_does_not_spend_the_link(session, auth):
+    auth.register(session, "ana@x.com", "long enough")
+    _, token = auth.request_password_reset(session, "ana@x.com")
+    with pytest.raises(WeakPasswordError):
+        auth.reset_password(session, token, "short")
+    auth.reset_password(session, token, "a new passphrase")
+
+
+def test_made_up_tokens_are_refused(session, auth):
+    with pytest.raises(InvalidResetTokenError):
+        auth.reset_password(session, "made-up", "a new passphrase")
+
+
+def test_reset_requests_are_throttled_with_or_without_an_account(session, auth, clock):
+    auth.register(session, "ana@x.com", "long enough")
+    for email in ("ana@x.com", "nobody@x.com"):
+        for _ in range(3):
+            auth.request_password_reset(session, email, ip="1.1.1.1")
+        with pytest.raises(TooManyAttemptsError):
+            auth.request_password_reset(session, email, ip="1.1.1.1")
+    clock.now += timedelta(hours=1)
+    assert auth.request_password_reset(session, "ana@x.com", ip="1.1.1.1") is not None
+
+
+def test_delete_account_deletes_pending_reset_links(session, auth):
+    ana = auth.register(session, "ana@x.com", "long enough")
+    auth.request_password_reset(session, "ana@x.com")
+    auth.delete_account(session, ana, "long enough")
+    assert session.scalar(select(PasswordResetToken)) is None

@@ -6,6 +6,7 @@ import { useMe } from './api/queries'
 import { ApiError } from './api/errors'
 import { markLoggedIn, markLoggedOut, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
+import { ForgotPasswordPage, ResetPasswordPage } from './auth/PasswordReset'
 import { BarsIcon, ChartIcon, CoinsIcon, ListIcon, LogoMark, PlusIcon, WalletIcon } from './components/Icons'
 import { LandingPage } from './landing/LandingPage'
 import { NewOperationDialog } from './operations/NewOperationDialog'
@@ -38,6 +39,8 @@ function Public() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/entrar" element={<LoginPage key="login" notice={null} />} />
       <Route path="/criar-conta" element={<LoginPage key="register" notice={null} initialTab="register" />} />
+      <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
+      <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

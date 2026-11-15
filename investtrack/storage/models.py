@@ -41,6 +41,19 @@ class AuthSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class PasswordResetToken(Base):
+    """A pending "forgot my password" link. Like sessions, only the SHA-256
+    of the token is stored. The row is deleted when the link is used, so
+    each link works once."""
+
+    __tablename__ = "password_reset_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 # Every table with the user's own data has an owner. The column is nullable
 # only for rows created before v0.5, which the first account adopts; the
 # application always sets it.

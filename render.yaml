@@ -21,3 +21,9 @@ services:
         sync: false
       - key: BRAPI_TOKEN # brapi.dev token, typed in Render's dashboard
         sync: false
+      - key: PUBLIC_URL # where password reset links point
+        value: https://investtrack.online
+      - key: RESEND_API_KEY # resend.com key for password reset emails, typed in the dashboard
+        sync: false
+      - key: MAIL_FROM # an address on the domain verified at Resend
+        value: InvestTrack <nao-responda@investtrack.online>
