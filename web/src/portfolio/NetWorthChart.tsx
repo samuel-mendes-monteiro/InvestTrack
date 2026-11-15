@@ -68,12 +68,12 @@ function NetWorthBody({ performance, gradient }: { performance: ReturnType<typeo
   return (
     <>
       <p className="chart-caption">
-        <span className={toneOf(change)}>
+        <span className={`chart-figure ${toneOf(change) ?? ''}`}>
           {change.startsWith('-') ? '' : '+'}
           {brl(change)}
-        </span>{' '}
+        </span>
         <span className="muted">
-          de {brDate(first.date)} a {brDate(last.date)}, aportes e resgates incluídos
+          de {brDate(first.date)} a {brDate(last.date)}
         </span>
       </p>
       <div className={`chart ${performance.isPlaceholderData ? 'chart-updating' : ''}`} aria-hidden="true">
@@ -119,6 +119,7 @@ function NetWorthBody({ performance, gradient }: { performance: ReturnType<typeo
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      <p className="chart-note">Variação do patrimônio no período, com aportes e resgates incluídos.</p>
     </>
   )
 }

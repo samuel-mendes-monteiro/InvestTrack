@@ -1179,14 +1179,29 @@ a.button:focus-visible {
   font-size: 0.8rem;
 }
 
+/* The period's result, big, with its dates beside it in small type. */
 .chart-caption {
-  margin: 8px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 6px 0 0;
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
 }
 
-.chart-caption > span:first-child {
-  font-weight: 600;
+.chart-figure {
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+/* How to read the chart, in small type under it. */
+.chart-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .chart-card .chart {

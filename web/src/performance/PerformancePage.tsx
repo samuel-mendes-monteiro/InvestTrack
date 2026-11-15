@@ -52,16 +52,19 @@ export function PerformancePage() {
             </div>
             {perf.start && perf.as_of && (
               <p className="chart-caption">
-                <span className={toneOf(perf.twr)}>{pct(perf.twr)}</span>{' '}
+                <span className={`chart-figure ${toneOf(perf.twr) ?? ''}`}>{pct(perf.twr)}</span>
                 <span className="muted">
-                  de {brDate(perf.start)} a {brDate(perf.as_of)} (último fechamento oficial). Rentabilidade ponderada
-                  pelo tempo (TWR): aportes e vendas não distorcem o resultado, e os proventos contam como retorno.
+                  de {brDate(perf.start)} a {brDate(perf.as_of)}
                 </span>
               </p>
             )}
             <div className={performance.isPlaceholderData ? 'chart-updating' : undefined}>
               <PerformanceChart points={perf.points} />
             </div>
+            <p className="chart-note">
+              Até o último fechamento oficial. Rentabilidade ponderada pelo tempo (TWR): aportes e vendas não distorcem o
+              resultado, e os proventos contam como retorno.
+            </p>
           </section>
 
           {/* Under the chart: the period's final numbers, once the curve shows how they got there. */}
