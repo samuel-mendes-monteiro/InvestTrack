@@ -37,6 +37,7 @@ export function portfolio(
       fixed_income: '0.00',
       ...totals,
     },
+    syncing: false,
   }
 }
 
@@ -122,9 +123,10 @@ export function performance(overrides: Partial<Schemas['PerformanceOut']> = {}):
     ibovespa: '7.4172',
     pct_of_cdi: '404.11',
     syncing: false,
+    invested_now: '6000.00',
     points: [
-      { date: '2026-01-05', twr: '0', cdi: '0', ibovespa: '0', value: '3000.00', net_worth: '3000.00' },
-      { date: '2026-11-13', twr: '48.8213', cdi: '12.0811', ibovespa: null, value: '8405.95', net_worth: '8390.15' },
+      { date: '2026-01-05', twr: '0', cdi: '0', ibovespa: '0', value: '3000.00', net_worth: '3000.00', invested: '3000.00' },
+      { date: '2026-11-13', twr: '48.8213', cdi: '12.0811', ibovespa: null, value: '8405.95', net_worth: '8390.15', invested: '5000.00' },
     ],
     ...overrides,
   }

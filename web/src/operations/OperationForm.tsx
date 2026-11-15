@@ -81,9 +81,12 @@ export function OperationForm({ operation, onClose }: { operation?: Operation; o
 /** The form itself, for a dialog that already has its frame (see NewOperationDialog). */
 export function OperationFields({ operation, onClose }: { operation?: Operation; onClose: () => void }) {
   const [fields, setFields] = useState<Fields>(operation ? fromOperation(operation) : EMPTY)
-  // null while the price follows the suggestion; a string once the user typed one.
-  // Editing starts typed: an old operation keeps the price it was made at.
+  // null while the price follows the suggestion; a string otherwise. Editing
+  // starts with the price the operation was made at, but that one only holds
+  // while its date and ticker do: change either, and the price follows the
+  // new day's quote. A price the user typed always stays.
   const [typedPrice, setTypedPrice] = useState<string | null>(operation ? asTyped(operation.price) : null)
+  const [userTyped, setUserTyped] = useState(false)
   const [invalid, setInvalid] = useState<string | null>(null)
   const create = useCreateOperation()
   const update = useUpdateOperation()
@@ -98,6 +101,14 @@ export function OperationFields({ operation, onClose }: { operation?: Operation;
     <K extends keyof Fields>(key: K) =>
     (e: { target: { value: string } }) =>
       setFields((f) => ({ ...f, [key]: e.target.value as Fields[K] }))
+
+  /** Date and ticker decide the quote: a new one drops a price that wasn't typed by the user. */
+  const setPriced =
+    (key: 'date' | 'ticker') =>
+    (e: { target: { value: string } }) => {
+      set(key)(e)
+      if (!userTyped) setTypedPrice(null)
+    }
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -130,7 +141,7 @@ export function OperationFields({ operation, onClose }: { operation?: Operation;
       <div className="grid2">
         <label>
           Ticker
-          <input value={fields.ticker} onChange={set('ticker')} placeholder="PETR4" autoCapitalize="characters" />
+          <input value={fields.ticker} onChange={setPriced('ticker')} placeholder="PETR4" autoCapitalize="characters" />
         </label>
         <label>
           Classe do ativo
@@ -145,7 +156,7 @@ export function OperationFields({ operation, onClose }: { operation?: Operation;
         </label>
         <label>
           Data
-          <input type="date" required max={todayIso()} value={fields.date} onChange={set('date')} />
+          <input type="date" required max={todayIso()} value={fields.date} onChange={setPriced('date')} />
         </label>
         <label>
           Quantidade
@@ -156,10 +167,20 @@ export function OperationFields({ operation, onClose }: { operation?: Operation;
           <input
             inputMode="decimal"
             value={price}
-            onChange={(e) => setTypedPrice(e.target.value)}
+            onChange={(e) => {
+              setTypedPrice(e.target.value)
+              setUserTyped(true)
+            }}
             placeholder={suggestion.isFetching ? 'Buscando…' : '30,50'}
           />
-          <PriceHint typed={typedPrice != null && !operation} suggestion={suggestion} onUse={() => setTypedPrice(null)} />
+          <PriceHint
+            typed={typedPrice != null}
+            suggestion={suggestion}
+            onUse={() => {
+              setTypedPrice(null)
+              setUserTyped(false)
+            }}
+          />
         </label>
         <label>
           Taxas (R$)

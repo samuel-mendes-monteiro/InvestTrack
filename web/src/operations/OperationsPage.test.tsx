@@ -205,3 +205,29 @@ test('editing keeps the price the operation was made at', async () => {
   await new Promise((r) => setTimeout(r, 500)) // past the debounce
   expect(api.requests).toHaveLength(0)
 })
+
+test("editing with a new date follows that day's close, unless a price was typed", async () => {
+  const api = fakeApi({
+    'GET /prices/PETR4': (request) => {
+      const day = new URL(request.url).searchParams.get('date')
+      return { body: { ticker: 'PETR4', date: day, price: day === '2026-03-10' ? '42.93' : '41.00', source: 'CLOSE' } }
+    },
+  })
+  renderWithApp(<OperationForm operation={operation()} onClose={() => {}} />)
+  const user = userEvent.setup()
+  const price = screen.getByLabelText(/^Preço unitário/)
+  expect(price).toHaveValue('30')
+
+  await user.clear(screen.getByLabelText('Data'))
+  await user.type(screen.getByLabelText('Data'), '2026-03-10')
+  await vi.waitFor(() => expect(price).toHaveValue('42,93'))
+  expect(api.requests.some((r) => r.url.includes('date=2026-03-10'))).toBe(true)
+
+  // Typed by hand: another date no longer replaces it.
+  await user.clear(price)
+  await user.type(price, '42,50')
+  await user.clear(screen.getByLabelText('Data'))
+  await user.type(screen.getByLabelText('Data'), '2026-03-11')
+  await new Promise((r) => setTimeout(r, 500))
+  expect(price).toHaveValue('42,50')
+})

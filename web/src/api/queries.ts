@@ -20,7 +20,14 @@ export function useMe() {
 }
 
 export function usePortfolio() {
-  return useQuery({ queryKey: keys.portfolio, queryFn: () => call(api.GET('/api/portfolio')) })
+  return useQuery({
+    queryKey: keys.portfolio,
+    queryFn: () => call(api.GET('/api/portfolio')),
+    // While the API downloads the CDI history, fixed income may be unknown or
+    // a day behind. Ask again until it's done, instead of keeping those numbers
+    // until the page is reloaded.
+    refetchInterval: (query) => (query.state.data?.syncing ? 5000 : false),
+  })
 }
 
 export function useOperations() {

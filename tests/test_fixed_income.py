@@ -17,6 +17,7 @@ from investtrack.fixed_income import (
     iof_rate,
     ir_rate,
     is_estimated,
+    money_in,
     partial_valuations,
     taxes,
     value_on,
@@ -151,6 +152,17 @@ def test_daily_net_values_take_the_taxes_out():
     assert net[DAYS[0]] == gross[DAYS[0]] == Decimal("2000")  # no gain yet, no tax
     expected = taxes(taxed, DAYS[3], Decimal("1030.301")).net  # LCI already redeemed
     assert net[DAYS[3]] == expected < gross[DAYS[3]]
+
+
+def test_money_in_counts_redemptions_until_today():
+    redeemed = cdb(redeemed_on=DAYS[2])  # out at its gross value that day: 1020.10
+    running = cdb(start=DAYS[1])
+    half = cdb(partial=[PartialRedemption(DAYS[1], Decimal("400"))])
+    assert money_in([redeemed, running, half], DAYS[:4], ONE_PERCENT, None, DAYS[3]) == Decimal(
+        "1000"
+    ) - Decimal("1020.1") + Decimal("1000") + Decimal("1000") - Decimal("400")
+    # Before the redemption day, it is still in.
+    assert money_in([redeemed], DAYS[:4], ONE_PERCENT, None, DAYS[1]) == Decimal("1000")
 
 
 def test_twr_of_fixed_income_alone():

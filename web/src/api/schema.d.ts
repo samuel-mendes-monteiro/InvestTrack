@@ -885,6 +885,11 @@ export interface components {
             /** Ibovespa */
             ibovespa: string | null;
             /**
+             * Invested Now
+             * @description Money put in minus taken out until today, after the last close too; None while a redemption's value is unknown
+             */
+            invested_now?: string | null;
+            /**
              * Pct Of Cdi
              * @description TWR as a percentage of the CDI
              */
@@ -922,6 +927,11 @@ export interface components {
              */
             ibovespa: string | null;
             /**
+             * Invested
+             * @description Money put in minus taken out until this close, fees included
+             */
+            invested: string;
+            /**
              * Net Worth
              * @description Value at the close with fixed income net of taxes, as the portfolio shows it
              */
@@ -946,6 +956,11 @@ export interface components {
         PortfolioOut: {
             /** Positions */
             positions: components["schemas"]["PositionOut"][];
+            /**
+             * Syncing
+             * @description CDI history is being downloaded; fixed income values may change or be unknown
+             */
+            syncing: boolean;
             totals: components["schemas"]["PortfolioTotals"];
         };
         /** PortfolioTotals */
@@ -954,9 +969,9 @@ export interface components {
             current_value: string | null;
             /**
              * Fixed Income
-             * @description Net value of fixed income still invested
+             * @description Net value of fixed income still invested; None while some value is unknown
              */
-            fixed_income: string;
+            fixed_income: string | null;
             /** Income */
             income: string;
             /**

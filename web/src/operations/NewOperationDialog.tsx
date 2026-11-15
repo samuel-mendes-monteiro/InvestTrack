@@ -3,7 +3,7 @@ import { Modal } from '../components/Modal'
 import { FixedIncomeForm } from '../fixed-income/FixedIncomeForm'
 import { OperationFields } from './OperationForm'
 
-type Kind = 'stock' | 'fixed-income'
+export type Kind = 'stock' | 'fixed-income'
 
 const KINDS: { value: Kind; label: string }[] = [
   { value: 'stock', label: 'Bolsa' }, // ações, FIIs, ETFs e BDRs
@@ -15,8 +15,15 @@ const KINDS: { value: Kind; label: string }[] = [
  * income investment. One frame for both, so switching doesn't close and
  * reopen the dialog (focus and scroll stay put).
  */
-export function NewOperationDialog({ onClose }: { onClose: () => void }) {
-  const [kind, setKind] = useState<Kind>('stock')
+export function NewOperationDialog({
+  onClose,
+  initialKind = 'stock',
+}: {
+  onClose: () => void
+  /** Which side opens first; the user can still switch. */
+  initialKind?: Kind
+}) {
+  const [kind, setKind] = useState<Kind>(initialKind)
 
   return (
     <Modal title="Nova operação" onClose={onClose}>

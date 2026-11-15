@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { useImport, usePreviewImport } from '../api/queries'
 import { domainMessage } from '../api/errors'
 import { Modal } from '../components/Modal'
@@ -31,7 +32,10 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         <p className="muted">
           Na Área do Investidor da B3 (investidor.b3.com.br), abra Extratos → Negociação, escolha o período e exporte em
           Excel. Operações já registradas são reconhecidas e não se repetem. O extrato não traz as taxas: as operações
-          entram com taxa zero, e você pode editá-las depois.
+          entram com taxa zero, e você pode editá-las depois.{' '}
+          <Link to="/ajuda/importar-b3" onClick={onClose}>
+            Ver o passo a passo
+          </Link>
         </p>
         <label>
           Extrato de Negociação (.xlsx)

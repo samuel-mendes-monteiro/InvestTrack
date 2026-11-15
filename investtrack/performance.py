@@ -43,6 +43,11 @@ def _next_trading_day(day: date, trading_days: list[date]) -> date | None:
     return next((d for d in trading_days if d >= day), None)
 
 
+def operation_flow(op: Operation) -> Decimal:
+    """Money in (a buy, fees included) or out (a sale, net of fees) of the portfolio."""
+    return _flow(op)
+
+
 def _flow(op: Operation) -> Decimal:
     if op.op_type is OpType.BUY:
         return op.quantity * op.price + op.fees

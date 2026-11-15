@@ -616,6 +616,7 @@ def test_performance_against_benchmarks():
         "date": "2026-03-02",
         "value": "1000.00",
         "net_worth": "1000.00",  # no fixed income: no tax to take out
+        "invested": "1000.00",  # 100 x 10, the money put in
         "twr": "0.00",
         "cdi": "0.00",
         "ibovespa": "10.00",
@@ -683,6 +684,7 @@ def test_performance_of_a_period_starts_at_zero():
         "date": "2026-02-02",
         "value": "1200.00",
         "net_worth": "1200.00",
+        "invested": "1000.00",  # since the first trade, not since the period's start
         "twr": "0.00",
         "cdi": "0.00",
         "ibovespa": "0.00",
@@ -704,6 +706,27 @@ def test_period_longer_than_the_history_shows_everything():
 def test_unknown_period_is_refused():
     with performance_client(LONG_HISTORY) as client:
         assert client.get("/performance", params={"period": "2Y"}).status_code == 422
+
+
+def test_fees_count_as_money_put_in_not_as_net_worth():
+    # The ITUB4 case: bought at the close, plus fees. Net worth is the market
+    # value; the money put in has the fees, so gain = net worth - money in.
+    with performance_client(HISTORY) as client:
+        client.post("/operations", json=op(qty="100", price="10", fees="7.90", day="2026-03-02"))
+        body = client.get("/performance").json()
+    first = body["points"][0]
+    assert (first["net_worth"], first["invested"]) == ("1000.00", "1007.90")
+    assert body["invested_now"] == "1007.90"
+
+
+def test_money_in_now_counts_a_sale_after_the_last_close():
+    with performance_client(HISTORY) as client:  # history ends on TUE
+        client.post("/operations", json=op(qty="100", price="10", day="2026-03-02"))
+        sale = op("SELL", qty="40", price="12", fees="1", day="2026-03-05")
+        client.post("/operations", json=sale)
+        body = client.get("/performance").json()
+    assert body["points"][-1]["invested"] == "1000.00"  # the sale isn't in the history yet
+    assert body["invested_now"] == "521.00"  # 1000 - (40 x 12 - 1)
 
 
 def test_performance_without_operations():
@@ -900,6 +923,21 @@ def test_portfolio_totals_include_fixed_income_still_invested(fi_client):
     redeemed = fi_client.post("/fixed-income", json=fixed()).json()
     fi_client.put(f"/fixed-income/{redeemed['id']}/redemption", json={"redeemed_on": "2026-03-03"})
     assert fi_client.get("/portfolio").json()["totals"]["fixed_income"] == "1020.10"
+
+
+def test_portfolio_says_when_fixed_income_is_settled(fi_client):
+    fi_client.post("/fixed-income", json=fixed())
+    body = fi_client.get("/portfolio").json()
+    assert (body["totals"]["fixed_income"], body["syncing"]) == ("1020.10", False)
+
+
+def test_unknown_fixed_income_is_not_left_out_of_the_total():
+    # No CDI yet (still downloading): the investment has no value. The total
+    # is unknown rather than smaller, and the screen is told to ask again.
+    with performance_client(StaticMarketData()) as client:
+        client.post("/fixed-income", json=fixed())
+        body = client.get("/portfolio").json()
+    assert (body["totals"]["fixed_income"], body["syncing"]) == (None, True)
 
 
 def test_lci_at_100_percent_of_cdi_earns_exactly_the_cdi(fi_client):

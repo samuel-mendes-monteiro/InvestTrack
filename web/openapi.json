@@ -1053,6 +1053,18 @@
             ],
             "title": "Ibovespa"
           },
+          "invested_now": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Money put in minus taken out until today, after the last close too; None while a redemption's value is unknown",
+            "title": "Invested Now"
+          },
           "pct_of_cdi": {
             "anyOf": [
               {
@@ -1146,6 +1158,11 @@
             "description": "Ibovespa return over the same period, %",
             "title": "Ibovespa"
           },
+          "invested": {
+            "description": "Money put in minus taken out until this close, fees included",
+            "title": "Invested",
+            "type": "string"
+          },
           "net_worth": {
             "description": "Value at the close with fixed income net of taxes, as the portfolio shows it",
             "title": "Net Worth",
@@ -1166,6 +1183,7 @@
           "date",
           "value",
           "net_worth",
+          "invested",
           "twr",
           "cdi",
           "ibovespa"
@@ -1193,13 +1211,19 @@
             "title": "Positions",
             "type": "array"
           },
+          "syncing": {
+            "description": "CDI history is being downloaded; fixed income values may change or be unknown",
+            "title": "Syncing",
+            "type": "boolean"
+          },
           "totals": {
             "$ref": "#/components/schemas/PortfolioTotals"
           }
         },
         "required": [
           "positions",
-          "totals"
+          "totals",
+          "syncing"
         ],
         "title": "PortfolioOut",
         "type": "object"
@@ -1218,9 +1242,16 @@
             "title": "Current Value"
           },
           "fixed_income": {
-            "description": "Net value of fixed income still invested",
-            "title": "Fixed Income",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Net value of fixed income still invested; None while some value is unknown",
+            "title": "Fixed Income"
           },
           "income": {
             "title": "Income",

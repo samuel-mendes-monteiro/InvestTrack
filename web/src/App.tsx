@@ -18,6 +18,7 @@ const NetWorthPage = lazy(() => import('./networth/NetWorthPage').then((m) => ({
 const PerformancePage = lazy(() => import('./performance/PerformancePage').then((m) => ({ default: m.PerformancePage })))
 const OperationsPage = lazy(() => import('./operations/OperationsPage').then((m) => ({ default: m.OperationsPage })))
 const IncomePage = lazy(() => import('./income/IncomePage').then((m) => ({ default: m.IncomePage })))
+const ImportGuidePage = lazy(() => import('./help/ImportGuidePage').then((m) => ({ default: m.ImportGuidePage })))
 const ProfilePage = lazy(() => import('./profile/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 
 export default function App() {
@@ -152,6 +153,7 @@ function Shell() {
               <Route key={p.path} path={p.path} element={p.element} />
             ))}
             <Route path="/perfil" element={<ProfilePage />} />
+            <Route path="/ajuda/importar-b3" element={<ImportGuidePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

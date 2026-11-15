@@ -392,3 +392,31 @@ def daily_net_values(
             if not (ended and day == last):  # gone that day, as in daily_series
                 values[day] += taxes(investment, day, v.gross, v.share).net
     return dict(values)
+
+
+def money_in(
+    investments: list[FixedIncome],
+    business_days: list[date],
+    cdi: dict[date, Decimal],
+    ipca: dict[date, Decimal] | None,
+    today: date,
+) -> Decimal | None:
+    """Money put into fixed income minus what came out, until `today`.
+
+    The same flows as daily_series (applied amount in, partial and full
+    redemptions out at their gross value), but counting a redemption made
+    after the last day with data too. None while such a value is unknown.
+    """
+    total = ZERO
+    for investment in investments:
+        if investment.start > today:
+            continue
+        total += investment.amount
+        total -= sum((p.gross for p in investment.partial if p.day <= today), ZERO)
+        if investment.end <= today:
+            gross = gross_values(investment, business_days, cdi, ipca)
+            known = [d for d in gross if d <= investment.end]
+            if not known:
+                return None
+            total -= gross[max(known)]
+    return total

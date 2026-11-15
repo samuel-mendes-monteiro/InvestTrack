@@ -5,6 +5,7 @@ import { brl, isZero, localTime, pct, quantity, toneOf } from '../format'
 import { Distribution, type Slice } from './Distribution'
 import { netWorth } from './netWorth'
 import { ReturnChart } from './ReturnChart'
+import { Welcome } from './Welcome'
 
 export function PortfolioPage() {
   const portfolio = usePortfolio()
@@ -14,20 +15,28 @@ export function PortfolioPage() {
 
   const { positions, totals } = portfolio.data
   const open = positions.filter((p) => !isZero(p.quantity))
-  const hasFixedIncome = !isZero(totals.fixed_income)
+  // Unknown (null) while the CDI history downloads: there is fixed income, just no value yet.
+  const hasFixedIncome = totals.fixed_income == null || !isZero(totals.fixed_income)
 
   if (!positions.length && !hasFixedIncome) {
-    return <p className="muted">Nenhuma operação ainda. Registre a primeira compra ou aplicação em “Nova operação”.</p>
+    return <Welcome />
   }
 
   const total = netWorth(totals)
   const missing = open.filter((p) => p.current_price == null).map((p) => p.ticker)
   const stale = open.filter((p) => p.price_stale)
   const slices: Slice[] = open.flatMap((p) => (p.current_value == null ? [] : [{ name: p.ticker, value: p.current_value }]))
-  if (hasFixedIncome) slices.push({ name: 'Renda fixa', value: totals.fixed_income })
+  if (totals.fixed_income != null && !isZero(totals.fixed_income)) {
+    slices.push({ name: 'Renda fixa', value: totals.fixed_income })
+  }
 
   return (
     <div className="portfolio">
+      {totals.fixed_income == null && (
+        <p className="alert warning" role="status">
+          Atualizando a renda fixa com o CDI mais recente. O patrimônio aparece sozinho em instantes.
+        </p>
+      )}
       <div className="portfolio-top">
         <div className="portfolio-summary">
           <Metric

@@ -175,7 +175,9 @@ class PortfolioTotals(BaseModel):
     realized_profit: Money
     income: Money
     income_pending: Money = Field(description="Announced income not paid yet")
-    fixed_income: Money = Field(description="Net value of fixed income still invested")
+    fixed_income: Money | None = Field(
+        description="Net value of fixed income still invested; None while some value is unknown"
+    )
 
 
 class PriceOut(BaseModel):
@@ -190,6 +192,9 @@ class PriceOut(BaseModel):
 class PortfolioOut(BaseModel):
     positions: list[PositionOut]
     totals: PortfolioTotals
+    syncing: bool = Field(
+        description="CDI history is being downloaded; fixed income values may change or be unknown"
+    )
 
 
 class FixedIncomeCreate(BaseModel):
@@ -254,6 +259,9 @@ class PerformancePoint(BaseModel):
     net_worth: Money = Field(
         description="Value at the close with fixed income net of taxes, as the portfolio shows it"
     )
+    invested: Money = Field(
+        description="Money put in minus taken out until this close, fees included"
+    )
     twr: Money = Field(description="Cumulative time-weighted return, %")
     cdi: Money | None = Field(description="CDI accumulated over the same period, %")
     ibovespa: Money | None = Field(description="Ibovespa return over the same period, %")
@@ -270,6 +278,11 @@ class PerformanceOut(BaseModel):
     ibovespa: Money | None
     pct_of_cdi: Money | None = Field(description="TWR as a percentage of the CDI")
     points: list[PerformancePoint]
+    invested_now: Money | None = Field(
+        None,
+        description="Money put in minus taken out until today, after the last close too; "
+        "None while a redemption's value is unknown",
+    )
 
 
 class ErrorDetail(BaseModel):

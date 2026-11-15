@@ -44,18 +44,26 @@ export function NetWorthChart({ current, height = 280 }: { current: string | nul
           ))}
         </div>
       </div>
-      <NetWorthBody performance={performance} gradient={gradient} current={current} height={height} />
+      <NetWorthBody
+        performance={performance}
+        period={period}
+        gradient={gradient}
+        current={current}
+        height={height}
+      />
     </section>
   )
 }
 
 function NetWorthBody({
   performance,
+  period,
   gradient,
   current,
   height,
 }: {
   performance: ReturnType<typeof usePerformance>
+  period: Period
   gradient: string
   current: string | null
   height: number
@@ -73,29 +81,40 @@ function NetWorthBody({
   }
 
   // net_worth, not value: fixed income net of taxes, as the Patrimônio card counts it.
-  const series = points.map((p) => ({ date: p.date, exact: p.net_worth, now: false }))
+  // invested: money put in until then (buys with their fees, minus sales).
+  const series = points.map((p) => ({ date: p.date, exact: p.net_worth, invested: p.invested, now: false }))
   const today = todayIso()
-  // Unknown (a ticker without a quote) adds nothing: better a line that stops
-  // at the last close than one that ends on a wrong number.
-  if (current != null && series[series.length - 1].date < today) {
-    series.push({ date: today, exact: current, now: true })
+  const investedNow = performance.data.invested_now
+  // Unknown (a ticker without a quote, a redemption not valued yet) adds
+  // nothing: better a line that stops at the last close than a wrong end.
+  if (current != null && investedNow != null && series[series.length - 1].date < today) {
+    series.push({ date: today, exact: current, invested: investedNow, now: true })
   }
   const first = series[0]
   const last = series[series.length - 1]
+  // The gain: what net worth grew beyond the money put in. Over the whole
+  // history it starts from nothing, so the first purchase (with its fees)
+  // counts as money in; over a period, from that period's first close.
+  const base = period === 'ALL' ? { exact: '0', invested: '0' } : first
+  const deposits = sumDecimals([last.invested, negate(base.invested)])
   // Exact, from the API's strings; only the line itself is drawn with Number().
-  const change = sumDecimals([last.exact, negate(first.exact)])
+  const gain = sumDecimals([last.exact, negate(base.exact), negate(deposits)])
   const data = series.map((p) => ({ ...p, size: Number(p.exact) }))
 
   return (
     <>
       <p className="chart-caption">
-        <span className={`chart-figure ${toneOf(change) ?? ''}`}>
-          {change.startsWith('-') ? '' : '+'}
-          {brl(change)}
+        <span className={`chart-figure ${toneOf(gain) ?? ''}`}>
+          {gain.startsWith('-') ? '' : '+'}
+          {brl(gain)}
         </span>
         <span className="muted">
-          de {brDate(first.date)} a {last.now ? 'hoje' : brDate(last.date)}
+          de ganho, de {brDate(first.date)} a {last.now ? 'hoje' : brDate(last.date)}
         </span>
+      </p>
+      <p className="chart-subcaption muted">
+        Patrimônio {brl(last.exact)} · {deposits.startsWith('-') ? 'Retiradas' : 'Aportes'} no período{' '}
+        {brl(deposits.replace(/^-/, ''))}
       </p>
       <div className={`chart ${performance.isPlaceholderData ? 'chart-updating' : ''}`} aria-hidden="true">
         <ResponsiveContainer width="100%" height={height}>
@@ -143,8 +162,8 @@ function NetWorthBody({
         </ResponsiveContainer>
       </div>
       <p className="chart-note">
-        Variação do patrimônio no período, com aportes, vendas e resgates incluídos. Cada ponto é um fechamento da B3; o
-        último é agora, com a cotação atual.
+        Ganho é quanto o patrimônio cresceu além do dinheiro colocado: compras com as taxas, menos vendas; aplicações,
+        menos resgates. Proventos recebidos não entram. Cada ponto é um fechamento da B3; o último é agora.
       </p>
     </>
   )

@@ -55,6 +55,7 @@ from investtrack.fixed_income import (
     daily_net_values,
     daily_series,
     is_estimated,
+    money_in,
     partial_valuations,
     value_on,
 )
@@ -70,6 +71,7 @@ from investtrack.performance import (
     Period,
     cdi_accumulated,
     index_return,
+    operation_flow,
     portfolio_history,
     rebase,
     window_base,
@@ -819,6 +821,17 @@ def create_app(
                 )
             )
 
+        # Fixed income from the CDI history. While a value is unknown (the history
+        # is still downloading), the total is unknown too: leaving that investment
+        # out would show a smaller net worth as if it were right.
+        investments = list_fixed_income(session, user.id, market, background)
+        active = [f for f in investments if f.status == "ACTIVE"]
+        unknown = any(f.net is None for f in active)
+        fixed_income = None if unknown else sum((f.net for f in active), Decimal("0"))
+        # The screen asks again while this is true, instead of keeping old numbers until a reload.
+        start = min((f.start for f in investments), default=None)
+        syncing = unknown or (start is not None and (market.syncing or not market.is_synced(start)))
+
         total_result = None if total_value is None else total_value - total_invested
         total_pct = (
             total_result / total_invested * 100
@@ -835,15 +848,9 @@ def create_app(
                 realized_profit=total_realized,
                 income=sum(income.values(), Decimal("0")),
                 income_pending=pending,
-                fixed_income=sum(
-                    (
-                        f.net
-                        for f in list_fixed_income(session, user.id, market, background)
-                        if f.status == "ACTIVE" and f.net is not None
-                    ),
-                    Decimal("0"),
-                ),
+                fixed_income=fixed_income,
             ),
+            syncing=syncing,
         )
 
     def list_fixed_income(
@@ -1135,6 +1142,20 @@ def create_app(
                 points=[],
             )
 
+        # Money put in until each close, over the whole history: a period's
+        # gain is its change in net worth minus what went in during it.
+        invested: dict[date, Decimal] = {}
+        running = Decimal("0")
+        for h in history:
+            running += h.flow
+            invested[h.date] = running
+        fi_in = money_in(investments, *fi_days, date.today())
+        invested_now = (
+            None
+            if fi_in is None
+            else sum((operation_flow(op) for op in operations), Decimal("0")) + fi_in
+        )
+
         first = history[0].date
         cdi_acc = cdi_accumulated(cdi, days, first) if cdi else {}
         ibov_ret = index_return(ibov, days, first)
@@ -1165,6 +1186,7 @@ def create_app(
                 net_worth=h.value
                 - fi_values.get(h.date, Decimal("0"))
                 + fi_net.get(h.date, Decimal("0")),
+                invested=invested[h.date],
                 twr=twr[h.date] * 100,
                 cdi=pct(cdi_acc.get(h.date)),
                 ibovespa=pct(ibov_ret.get(h.date)),
@@ -1181,6 +1203,7 @@ def create_app(
             ibovespa=last.ibovespa,
             pct_of_cdi=last.twr / last.cdi * 100 if last.cdi else None,
             points=points,
+            invested_now=invested_now,
         )
 
     app.include_router(api)  # after the routes exist: including copies them
