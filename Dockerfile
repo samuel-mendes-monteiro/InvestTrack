@@ -34,7 +34,7 @@ RUN useradd --system --create-home --home-dir /home/app app && mkdir /data
 VOLUME /data
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
-# --proxy-headers: behind the host's proxy (Fly, Render), trust X-Forwarded-For/-Proto, so the
+# --proxy-headers: behind the host's proxy (Render), trust X-Forwarded-For/-Proto, so the
 # login limit sees each client's IP (not the proxy's) and the request is
 # known to be HTTPS (the session cookie is then marked Secure). Only the
 # proxy can reach the app, so trusting any forwarder is safe here.

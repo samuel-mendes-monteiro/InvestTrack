@@ -5,10 +5,13 @@
 ![TypeScript](https://img.shields.io/badge/react-TypeScript-blue)
 ![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Website](https://img.shields.io/badge/site-investtrack.online-0969da)](https://investtrack.online)
 
 > A personal investment portfolio tracker for the Brazilian stock market (B3), with live quotes and exact average-cost and profit calculations.
 
-**Live at [investtrack.online](https://investtrack.online)**: create an account and import your B3 statement. It runs on free plans, so the first visit after a quiet while takes up to a minute to wake the server.
+### 🌐 Try it at [investtrack.online](https://investtrack.online)
+
+Create an account, import your B3 statement and see your portfolio, also on your phone. It runs on free plans, so the first visit after a quiet while takes up to a minute to wake the server.
 
 ![Carteira: net worth, totals, cumulative return against CDI and Ibovespa, and the allocation](docs/portfolio.jpg)
 
@@ -318,7 +321,7 @@ docker run -p 8000:8000 -v investtrack-data:/data --env-file .env investtrack
 
 ### Deploying for free: Render + Neon
 
-[Render](https://render.com)'s free plan runs the Docker image but has no disk, so the database is PostgreSQL on [Neon](https://neon.tech)'s free plan. [`render.yaml`](render.yaml) has the settings.
+This is how [investtrack.online](https://investtrack.online) runs. [Render](https://render.com)'s free plan runs the Docker image but has no disk, so the database is PostgreSQL on [Neon](https://neon.tech)'s free plan. [`render.yaml`](render.yaml) has the settings.
 
 1. On Neon, create a project in **AWS US East 1 (N. Virginia)** and copy its connection string.
 2. On Render, **New → Blueprint**, pick this repository, and fill in `DATABASE_URL` (the Neon string) and `BRAPI_TOKEN`.
@@ -326,17 +329,6 @@ docker run -p 8000:8000 -v investtrack-data:/data --env-file .env investtrack
 4. For your own domain: on Render, **Settings → Custom Domains**, then at the domain's DNS an `A` record for `@` pointing to `216.24.57.1` and a `CNAME` for `www` pointing to the service's `onrender.com` address. Render issues the HTTPS certificate and redirects `www` to the bare domain.
 
 The service's `onrender.com` address gets a random suffix and keeps it: renaming the service doesn't change it. The free service sleeps after 15 minutes without visits, and the next visit takes about a minute to wake it. A year of B3 history takes about 35 MB of the database.
-
-### Deploying to Fly.io
-
-With [flyctl](https://fly.io/docs/flyctl/install/) and a Fly account ([`fly.toml`](fly.toml) has the settings: São Paulo region, one always-on machine, a 1 GB volume for the database):
-
-```bash
-fly launch --copy-config --no-deploy   # creates the app; pick a free name
-fly volumes create investtrack_data --region gru --size 1
-fly secrets set BRAPI_TOKEN=...       # your brapi.dev token
-fly deploy
-```
 
 ### API
 
@@ -403,7 +395,7 @@ Every route is under `/api`. All except `/api/health`, `/api/auth/register` and 
 - [x] **v0.6:** import B3 trade statements
 - [x] **v0.7:** partial redemptions and IPCA+ fixed income, editing operations, login rate limiting
 - [x] **v1.0:** React + TypeScript frontend, typed from the API's OpenAPI schema
-- [x] **v1.0:** deployment with Docker on Fly.io, session in an HttpOnly cookie
+- [x] **v1.0:** one Docker image with the API and the web app, session in an HttpOnly cookie
 - [x] **v1.1:** live at [investtrack.online](https://investtrack.online), free on Render with PostgreSQL on Neon; backend split into layers
 - [x] **v1.1:** redesigned screens, Patrimônio page with the gain net of deposits, return split into prices and income, product page, onboarding and import guide, price suggestions, profile with password change and account deletion, editable fixed income
 
