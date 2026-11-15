@@ -763,10 +763,10 @@ class UnsyncedMarket(StaticMarketData):
         super().__init__(last_day=TUE)
         self.synced_from = []
 
-    def is_synced(self, start):
+    def is_synced(self, start, *, prices=True):
         return False
 
-    def sync(self, start):
+    def sync(self, start, *, prices=True):
         self.synced_from.append(start)
 
 

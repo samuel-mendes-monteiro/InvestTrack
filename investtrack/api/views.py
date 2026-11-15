@@ -148,9 +148,13 @@ def business_days(market: MarketDataSource, start: date) -> tuple[list[date], di
 
 
 def sync_market_data(market: MarketDataSource, start: date, background: BackgroundTasks) -> None:
-    """Download the missing history from `start` after the response is sent."""
-    if not market.syncing and not market.is_synced(start):
-        background.add_task(market.sync, start)
+    """Download the CDI and IPCA missing from `start` after the response is sent.
+
+    Only the benchmarks: fixed income needs no share prices, and asking for
+    them from an old CDB's start would download years of B3 files for nothing.
+    """
+    if not market.syncing and not market.is_synced(start, prices=False):
+        background.add_task(market.sync, start, prices=False)
 
 
 def list_fixed_income(

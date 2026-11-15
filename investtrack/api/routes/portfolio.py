@@ -113,7 +113,9 @@ def get_portfolio(
     fixed_income = None if unknown else sum((f.net for f in active), Decimal("0"))
     # The screen asks again while this is true, instead of keeping old numbers until a reload.
     start = min((f.start for f in investments), default=None)
-    syncing = unknown or (start is not None and (market.syncing or not market.is_synced(start)))
+    syncing = unknown or (
+        start is not None and (market.syncing or not market.is_synced(start, prices=False))
+    )
 
     total_result = None if total_value is None else total_value - total_invested
     total_pct = (

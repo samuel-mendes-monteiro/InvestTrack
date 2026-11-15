@@ -46,8 +46,8 @@ IPCA_SINCE = date(2000, 1, 1)
 class MarketDataSource(Protocol):
     syncing: bool
 
-    def is_synced(self, start: date) -> bool: ...
-    def sync(self, start: date) -> None: ...
+    def is_synced(self, start: date, *, prices: bool = True) -> bool: ...
+    def sync(self, start: date, *, prices: bool = True) -> None: ...
     def last_day(self) -> date: ...
     def closes(self, tickers: set[str], start: date) -> dict[str, dict[date, Decimal]]: ...
     def series(self, name: str, start: date) -> dict[date, Decimal]: ...
@@ -146,27 +146,33 @@ class MarketData:
             missing.append(IPCA)
         return missing
 
-    def missing(self, start: date) -> list[str]:
+    def missing(self, start: date, *, prices: bool = True) -> list[str]:
+        """What to download, smallest first.
+
+        The benchmarks are a few requests and fixed income needs only them;
+        B3's prices can be hundreds of MB. Downloading them first would keep
+        every CDB unknown until the last COTAHIST file arrives. `prices=False`
+        is for fixed income alone, which has no use for share prices at all.
+        """
         with Session(self._engine) as session:
             loaded = self._loaded(session)
             cdi_from = session.scalar(
                 select(func.min(BenchmarkValue.date)).where(BenchmarkValue.series == CDI)
             )
-        return self._missing_price_periods(loaded, start) + self._missing_benchmarks(
-            loaded, start, cdi_from
-        )
+        benchmarks = self._missing_benchmarks(loaded, start, cdi_from)
+        return benchmarks + (self._missing_price_periods(loaded, start) if prices else [])
 
-    def is_synced(self, start: date) -> bool:
-        return not self.missing(start)
+    def is_synced(self, start: date, *, prices: bool = True) -> bool:
+        return not self.missing(start, prices=prices)
 
     # --- downloading ---------------------------------------------------------
 
-    def sync(self, start: date) -> None:
+    def sync(self, start: date, *, prices: bool = True) -> None:
         """Download what is missing. Does nothing if a sync is already running."""
         if not self._lock.acquire(blocking=False):
             return
         try:
-            for period in self.missing(start):
+            for period in self.missing(start, prices=prices):
                 try:
                     self._load(period, start)
                 except HistoryUnavailableError as e:
@@ -277,10 +283,10 @@ class StaticMarketData:
         self._series = series or {}
         self._last_day = last_day or date.today() - timedelta(days=1)
 
-    def is_synced(self, start: date) -> bool:
+    def is_synced(self, start: date, *, prices: bool = True) -> bool:
         return True
 
-    def sync(self, start: date) -> None:
+    def sync(self, start: date, *, prices: bool = True) -> None:
         pass
 
     def last_day(self) -> date:

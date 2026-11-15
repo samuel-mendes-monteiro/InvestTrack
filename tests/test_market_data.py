@@ -56,13 +56,23 @@ def market(engine, cotahist, today=TODAY):
 def test_closed_months_by_file_current_month_by_day(engine):
     november = [2, 3, 4, 5, 6, 9, 10, 11, 12, 13]  # weekdays until Friday 13
     assert market(engine, fake_cotahist()).missing(date(2026, 9, 15)) == [
+        "IBOV:2026",  # the benchmarks first: a few small requests
+        "CDI",
+        "IPCA",
         "COTAHIST:M092026",
         "COTAHIST:M102026",
         *[f"COTAHIST:D{d:02d}112026" for d in november],
-        "IBOV:2026",
-        "CDI",
-        "IPCA",
     ]
+
+
+def test_fixed_income_alone_downloads_no_prices(engine):
+    cotahist = fake_cotahist()
+    m = market(engine, cotahist)
+    m.sync(date(2026, 10, 1), prices=False)
+    assert m.is_synced(date(2026, 10, 1), prices=False)
+    cotahist.fetch_month.assert_not_called()
+    cotahist.fetch_day.assert_not_called()
+    assert not m.is_synced(date(2026, 10, 1))  # the prices are still missing
 
 
 def test_sync_downloads_everything_once(engine):
