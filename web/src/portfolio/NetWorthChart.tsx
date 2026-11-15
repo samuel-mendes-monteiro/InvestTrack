@@ -29,7 +29,7 @@ export function NetWorthChart() {
   const gradient = `networth-${useId().replace(/:/g, '')}`
 
   return (
-    <section className="card networth" aria-labelledby={`${gradient}-title`}>
+    <section className="card chart-card" aria-labelledby={`${gradient}-title`}>
       <div className="card-head">
         <h2 id={`${gradient}-title`}>Evolução do patrimônio</h2>
         <div className="segmented-buttons" role="group" aria-label="Período">
@@ -67,7 +67,7 @@ function NetWorthBody({ performance, gradient }: { performance: ReturnType<typeo
 
   return (
     <>
-      <p className="networth-change">
+      <p className="chart-caption">
         <span className={toneOf(change)}>
           {change.startsWith('-') ? '' : '+'}
           {brl(change)}

@@ -19,7 +19,7 @@ test('shows the TWR next to CDI and Ibovespa', async () => {
   expect(metric('CDI')).toHaveTextContent('+12,08%')
   expect(metric('Ibovespa')).toHaveTextContent('+7,42%')
   expect(metric('% do CDI')).toHaveTextContent('404%')
-  expect(screen.getByText(/De 05\/01\/2026 a 13\/11\/2026/)).toBeInTheDocument()
+  expect(screen.getByText(/de 05\/01\/2026 a 13\/11\/2026/)).toBeInTheDocument()
 })
 
 test('while history downloads it says so and refetches by itself', async () => {
@@ -58,7 +58,7 @@ test('the period buttons ask the API for that window', async () => {
   await userEvent.click(within(periods).getByRole('button', { name: '6M' }))
 
   await vi.waitFor(() => expect(metric('Carteira')).toHaveTextContent('+20,50%'))
-  expect(screen.getByText(/De 13\/05\/2026 a 13\/11\/2026/)).toBeInTheDocument()
+  expect(screen.getByText(/de 13\/05\/2026 a 13\/11\/2026/)).toBeInTheDocument()
   expect(within(periods).getByRole('button', { name: '6M' })).toHaveAttribute('aria-pressed', 'true')
   expect(api.requests.map((r) => new URL(r.url).searchParams.get('period'))).toEqual(['ALL', '6M'])
 })

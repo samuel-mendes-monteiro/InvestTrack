@@ -21,7 +21,7 @@ export function PerformancePage() {
   const perf = performance.data
 
   return (
-    <>
+    <div className="performance">
       {perf.syncing && (
         <p className="alert warning" role="status">
           Baixando o histórico de cotações da B3, do Ibovespa e do CDI. Na primeira vez leva cerca de um minuto; depois,
@@ -39,29 +39,39 @@ export function PerformancePage() {
             <Metric label="Ibovespa" value={pct(perf.ibovespa)} />
             <Metric label="% do CDI" value={wholePct(perf.pct_of_cdi)} help="Rentabilidade da carteira dividida pela do CDI." />
           </div>
-          {perf.start && perf.as_of && (
-            <p className="muted small">
-              De {brDate(perf.start)} a {brDate(perf.as_of)} (último fechamento oficial). Rentabilidade ponderada pelo
-              tempo (TWR): aportes e vendas não distorcem o resultado, e os proventos contam como retorno.
-            </p>
-          )}
-          <div className={performance.isPlaceholderData ? 'chart-updating' : undefined}>
-            <PerformanceChart points={perf.points} />
-          </div>
-          <div className="segmented-buttons" role="group" aria-label="Período">
-            {PERIODS.map((p) => (
-              <button
-                key={p.value}
-                aria-pressed={period === p.value}
-                title={p.name}
-                onClick={() => choose(p.value)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+
+          {/* The same frame as the Carteira's net worth chart: title and periods on top, a summary line, the chart. */}
+          <section className="card chart-card" aria-labelledby="twr-title">
+            <div className="card-head">
+              <h2 id="twr-title">Rentabilidade acumulada</h2>
+              <div className="segmented-buttons" role="group" aria-label="Período">
+                {PERIODS.map((p) => (
+                  <button
+                    key={p.value}
+                    aria-pressed={period === p.value}
+                    title={p.name}
+                    onClick={() => choose(p.value)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {perf.start && perf.as_of && (
+              <p className="chart-caption">
+                <span className={toneOf(perf.twr)}>{pct(perf.twr)}</span>{' '}
+                <span className="muted">
+                  de {brDate(perf.start)} a {brDate(perf.as_of)} (último fechamento oficial). Rentabilidade ponderada
+                  pelo tempo (TWR): aportes e vendas não distorcem o resultado, e os proventos contam como retorno.
+                </span>
+              </p>
+            )}
+            <div className={performance.isPlaceholderData ? 'chart-updating' : undefined}>
+              <PerformanceChart points={perf.points} />
+            </div>
+          </section>
         </>
       )}
-    </>
+    </div>
   )
 }

@@ -565,13 +565,15 @@ ul.small {
   gap: 12px;
 }
 
-.portfolio {
+.portfolio,
+.performance {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.portfolio .alert {
+.portfolio .alert,
+.performance .alert {
   margin: 0;
 }
 
@@ -598,16 +600,19 @@ ul.small {
    chart sized to "100%" would then keep the whole column wide on phones. */
 .portfolio > *,
 .portfolio-top > *,
-.networth {
+.performance > *,
+.chart-card {
   min-width: 0;
 }
 
-.portfolio .metrics {
+.portfolio .metrics,
+.performance .metrics {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   margin: 0;
 }
 
-.portfolio .metric {
+.portfolio .metric,
+.performance .metric {
   padding: 14px 16px;
   border-radius: 12px;
   background: var(--surface);
@@ -1152,39 +1157,54 @@ a.button:focus-visible {
   text-align: center;
 }
 
-/* Net worth chart, under the Carteira's numbers. */
-.networth .card-head {
+/* A chart in a card, the same on the Carteira and on Rentabilidade: title and
+   period buttons on top, a summary line, then the chart. */
+.chart-card .card-head {
   flex-wrap: wrap;
   align-items: center;
   margin-bottom: 4px;
 }
 
-.networth h2 {
+.chart-card h2 {
   margin: 0;
 }
 
-.networth .segmented-buttons {
+.chart-card .segmented-buttons {
   margin: 0;
 }
 
-.networth .segmented-buttons button {
+.chart-card .segmented-buttons button {
   min-width: 0;
   padding: 3px 10px;
   font-size: 0.8rem;
 }
 
-.networth-change {
+.chart-caption {
   margin: 8px 0 0;
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
 }
 
-.networth-change > span:first-child {
+.chart-caption > span:first-child {
   font-weight: 600;
 }
 
-.networth .chart {
+.chart-card .chart {
   margin-bottom: 0;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.chart-legend .swatch {
+  margin-right: 6px;
 }
 
 /* --- Profile --------------------------------------------------------------- */
