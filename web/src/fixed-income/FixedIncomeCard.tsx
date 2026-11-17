@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useFixedIncome } from '../api/queries'
 import { Modal } from '../components/Modal'
-import { brDate, brl, pct, sumDecimals, toneOf } from '../format'
+import { brDate, pct, sumDecimals, toneOf } from '../format'
+import { usePrivateFormat } from '../privacy'
 import { FI_STATUS } from '../labels'
 import { FixedIncomeForm } from './FixedIncomeForm'
 import { InvestmentDialog } from './InvestmentDialog'
@@ -12,6 +13,7 @@ import { rateLabel } from './rate'
  * dialog to redeem or delete it. New ones come from the "Nova operação" button.
  */
 export function FixedIncomeCard() {
+  const { brl } = usePrivateFormat()
   const investments = useFixedIncome()
   // The id, not the object: the dialog must show the refetched numbers after a change.
   const [openId, setOpenId] = useState<number | null>(null)

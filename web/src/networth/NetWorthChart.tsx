@@ -1,7 +1,8 @@
 import { useId, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { usePerformance, type Period } from '../api/queries'
-import { brDate, brl, sumDecimals, todayIso, toneOf } from '../format'
+import { brDate, sumDecimals, todayIso, toneOf } from '../format'
+import { usePrivateFormat } from '../privacy'
 import { PERIODS } from '../labels'
 
 // Axis labels only ("R$ 12 mil"): rounded on purpose, the tooltip has the exact value.
@@ -68,6 +69,7 @@ function NetWorthBody({
   current: string | null
   height: number
 }) {
+  const { brl, hidden } = usePrivateFormat()
   if (performance.isPending) return <p className="muted">Carregando o histórico…</p>
   if (performance.isError) return <p className="muted">Não foi possível carregar o histórico do patrimônio.</p>
 
@@ -140,7 +142,8 @@ function NetWorthBody({
               stroke="var(--muted)"
               width={76}
               domain={['auto', 'auto']}
-              tickFormatter={(v: number) => axisMoney.format(v)}
+              // Hidden: no scale at all. The shape of the line alone tells no amount.
+              tickFormatter={(v: number) => (hidden ? '' : axisMoney.format(v))}
             />
             <Tooltip
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}

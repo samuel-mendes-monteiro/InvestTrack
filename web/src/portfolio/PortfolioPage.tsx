@@ -1,13 +1,15 @@
 import { usePortfolio } from '../api/queries'
 import { Metric } from '../components/Metric'
 import { FixedIncomeCard } from '../fixed-income/FixedIncomeCard'
-import { brl, isZero, localTime, pct, quantity, toneOf } from '../format'
+import { isZero, localTime, pct, toneOf } from '../format'
+import { usePrivateFormat } from '../privacy'
 import { Distribution, type Slice } from './Distribution'
 import { netWorth } from './netWorth'
 import { ReturnChart } from './ReturnChart'
 import { Welcome } from './Welcome'
 
 export function PortfolioPage() {
+  const { brl, quantity } = usePrivateFormat()
   const portfolio = usePortfolio()
 
   if (portfolio.isPending) return <p className="muted">Carregando a carteira…</p>

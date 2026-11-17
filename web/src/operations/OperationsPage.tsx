@@ -6,7 +6,8 @@ import { Metric } from '../components/Metric'
 import { Modal } from '../components/Modal'
 import { FixedIncomeForm } from '../fixed-income/FixedIncomeForm'
 import { InvestmentDialog } from '../fixed-income/InvestmentDialog'
-import { brDate, brl, multiplyDecimals, quantity, sumDecimals } from '../format'
+import { brDate, multiplyDecimals, sumDecimals } from '../format'
+import { usePrivateFormat } from '../privacy'
 import { OP_TYPES } from '../labels'
 import { ImportDialog } from './ImportDialog'
 import { OperationForm } from './OperationForm'
@@ -80,6 +81,7 @@ function fixedIncomeRows(f: FixedIncome): Row[] {
 }
 
 export function OperationsPage() {
+  const { brl, quantity } = usePrivateFormat()
   const operations = useOperations()
   // Not waited for: the trades show at once, and fixed income joins them when it arrives.
   const fixedIncome = useFixedIncome()

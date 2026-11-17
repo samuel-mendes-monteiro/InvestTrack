@@ -7,9 +7,10 @@ import { ApiError } from './api/errors'
 import { markLoggedIn, markLoggedOut, useSession } from './api/session'
 import { LoginPage } from './auth/LoginPage'
 import { ForgotPasswordPage, ResetPasswordPage } from './auth/PasswordReset'
-import { BarsIcon, ChartIcon, CoinsIcon, ListIcon, LogoMark, PlusIcon, WalletIcon } from './components/Icons'
+import { BarsIcon, ChartIcon, CoinsIcon, EyeIcon, EyeOffIcon, ListIcon, LogoMark, PlusIcon, WalletIcon } from './components/Icons'
 import { LandingPage } from './landing/LandingPage'
 import { NewOperationDialog } from './operations/NewOperationDialog'
+import { toggleHideValues, useHideValues } from './privacy'
 
 // Each page is its own chunk, downloaded the first time it's opened: the login
 // screen doesn't wait for the charting library, and a page's code only loads
@@ -100,6 +101,7 @@ function Shell() {
   const me = useMe()
   const [leaving, setLeaving] = useState(false)
   const [creating, setCreating] = useState(false)
+  const hidden = useHideValues()
 
   // Leaving the shell (logout or expired session) empties the cache, so the
   // next person to log in on this browser never sees this one's portfolio.
@@ -133,6 +135,16 @@ function Shell() {
           ))}
         </nav>
         <span className="spacer" />
+        {/* aria-pressed: a screen reader announces it as a toggle, on or off. */}
+        <button
+          className="hide-values"
+          onClick={toggleHideValues}
+          aria-pressed={hidden}
+          aria-label="Ocultar valores"
+          title={hidden ? 'Mostrar valores' : 'Ocultar valores (as porcentagens continuam)'}
+        >
+          {hidden ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
         <button className="primary new-operation" onClick={() => setCreating(true)}>
           <PlusIcon />
           <span>Nova operação</span>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Cell, Pie, PieChart, Sector } from 'recharts'
-import { brl, sumDecimals } from '../format'
+import { sumDecimals } from '../format'
+import { usePrivateFormat } from '../privacy'
 
 // Categorical palette, ordered so neighbours in the donut stay distinguishable.
 const COLORS = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2', '#edc948', '#b07aa1', '#ff9da7', '#9c755f']
@@ -24,6 +25,7 @@ export type Slice = { name: string; value: string }
  * a floating tooltip: it never covers the donut, and it is always in the same place.
  */
 export function Distribution({ slices }: { slices: Slice[] }) {
+  const { brl } = usePrivateFormat()
   const [active, setActive] = useState<number | null>(null)
 
   // Number() only to draw and to show shares: a pixel or a rounded 12,3% can't

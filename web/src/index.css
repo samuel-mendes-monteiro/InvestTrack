@@ -1900,3 +1900,15 @@ button.danger-solid {
   color: #fff;
   font-weight: 600;
 }
+
+/* The eye that hides amounts: an icon-only button, the size of the avatar. */
+.topbar button.hide-values {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.topbar button.hide-values[aria-pressed='true'] {
+  color: var(--accent);
+}

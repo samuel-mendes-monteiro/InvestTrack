@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { Schemas } from '../api/queries'
-import { brl } from '../format'
+import { usePrivateFormat } from '../privacy'
 import { INCOME_TYPES, MONTHS } from '../labels'
 
 const SERIES = [
@@ -19,6 +19,7 @@ const axisMoney = new Intl.NumberFormat('pt-BR', {
 
 /** Net income per month, stacked by type, in the same frame as the other charts. */
 export function MonthlyChart({ months }: { months: Schemas['MonthlyIncomeOut'][] }) {
+  const { brl, hidden } = usePrivateFormat()
   // Number() only for bar heights; the tooltip shows the API's exact strings.
   const data = months.map((m) => ({
     month: `${MONTHS[m.month - 1]}/${String(m.year % 100).padStart(2, '0')}`,
@@ -48,7 +49,8 @@ export function MonthlyChart({ months }: { months: Schemas['MonthlyIncomeOut'][]
               axisLine={false}
               stroke="var(--muted)"
               width={76}
-              tickFormatter={(v: number) => axisMoney.format(v)}
+              // Hidden: no scale at all. The shape of the line alone tells no amount.
+              tickFormatter={(v: number) => (hidden ? '' : axisMoney.format(v))}
             />
             <Tooltip
               cursor={{ fill: 'var(--border)', opacity: 0.4 }}

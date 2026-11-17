@@ -1,11 +1,12 @@
 import { usePortfolio } from '../api/queries'
 import { Metric } from '../components/Metric'
-import { brl } from '../format'
+import { usePrivateFormat } from '../privacy'
 import { netWorth } from '../portfolio/netWorth'
 import { NetWorthChart } from './NetWorthChart'
 
 /** How much there is and how it got here: the net worth over time, and today's split. */
 export function NetWorthPage() {
+  const { brl } = usePrivateFormat()
   const portfolio = usePortfolio()
 
   if (portfolio.isPending) return <p className="muted">Carregando o patrimônio…</p>

@@ -1,5 +1,6 @@
 import type { Income } from '../api/queries'
-import { brDate, brl, perShare, quantity } from '../format'
+import { brDate, perShare } from '../format'
+import { usePrivateFormat } from '../privacy'
 import { INCOME_TYPES } from '../labels'
 
 /** Income items; `onDelete` adds a button to the manual ones (B3's come from the trades). */
@@ -14,6 +15,7 @@ export function IncomeTable({
   onDelete?: (income: Income) => void
   deleting?: boolean
 }) {
+  const { brl, quantity } = usePrivateFormat()
   return (
     <div className="table-wrap">
       <table className="data" aria-label={label}>

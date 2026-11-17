@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useDeleteIncome, useIncomes, useMonthlyIncome, useOperations, type Income } from '../api/queries'
 import { Metric } from '../components/Metric'
-import { brDate, brl, divideDecimal, sumDecimals } from '../format'
+import { brDate, divideDecimal, sumDecimals } from '../format'
+import { usePrivateFormat } from '../privacy'
 import { INCOME_TYPES } from '../labels'
 import { IncomeForm } from './IncomeForm'
 import { IncomeTable } from './IncomeTable'
 import { MonthlyChart } from './MonthlyChart'
 
 export function IncomePage() {
+  const { brl } = usePrivateFormat()
   const incomes = useIncomes()
   const operations = useOperations()
   const remove = useDeleteIncome()
