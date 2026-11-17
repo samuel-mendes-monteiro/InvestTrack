@@ -173,12 +173,19 @@ class Auth:
         clock: Callable[[], datetime] = _utc_now,
         throttle: LoginThrottle | None = None,
         reset_throttle: LoginThrottle | None = None,
+        register_throttle: LoginThrottle | None = None,
     ):
         self.throttle = throttle or LoginThrottle(clock=clock)
         # Each reset request sends an email: without a limit, anyone could
         # flood someone's inbox (and spend the provider's daily quota).
         self.reset_throttle = reset_throttle or LoginThrottle(
             per_account=3, per_ip=10, window=timedelta(hours=1), clock=clock
+        )
+        # Sign-up says whether an email is taken (it has to: it logs straight
+        # in), so without a limit anyone could check a list of emails against
+        # it at full speed. It also costs a hash per attempt.
+        self.register_throttle = register_throttle or LoginThrottle(
+            per_account=5, per_ip=10, window=timedelta(hours=1), clock=clock
         )
         # Tests pass a cheap hasher; the default parameters are argon2-cffi's,
         # which follow RFC 9106's recommendations.
@@ -190,10 +197,17 @@ class Auth:
         # reveal which emails have an account.
         self._dummy_hash = self._hasher.hash(secrets.token_urlsafe(16))
 
-    def register(self, session: Session, email: str, password: str) -> User:
-        """Create an account. The very first one adopts the data from before v0.5."""
+    def register(self, session: Session, email: str, password: str, ip: str = "") -> User:
+        """Create an account. The very first one adopts the data from before v0.5.
+
+        Every attempt that gets as far as looking the email up counts in the
+        throttle, created or taken alike: counting only the taken ones would
+        let an attacker probe for free until the first hit.
+        """
         email = normalize_email(email)
         check_password_length(password)
+        self.register_throttle.check(email, ip)
+        self.register_throttle.failed(email, ip)  # "failed" here just means "counted"
         if session.scalar(select(User).where(User.email == email)):
             raise EmailTakenError("email already registered")
 

@@ -2078,6 +2078,16 @@
               }
             },
             "description": "Invalid email or weak password"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Too many sign-ups from this address"
           }
         },
         "summary": "Register",

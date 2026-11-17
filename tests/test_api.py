@@ -1281,6 +1281,26 @@ def test_password_reset_requests_are_throttled():
     assert r.headers["Retry-After"]
 
 
+def test_sign_ups_are_throttled_per_address():
+    with api_client() as c:  # its own sign-up (ana) is the first of the 10 per hour
+        for i in range(8):
+            assert (
+                c.post(
+                    "/auth/register",
+                    json={"email": f"user{i}@example.com", "password": "long enough"},
+                ).status_code
+                == 201
+            )
+        # A taken email counts too: probing must cost the same as creating.
+        taken = c.post(
+            "/auth/register", json={"email": "ana@example.com", "password": "long enough"}
+        )
+        assert taken.status_code == 409
+        r = c.post("/auth/register", json={"email": "new@example.com", "password": "long enough"})
+    assert (r.status_code, r.json()["detail"]["code"]) == (429, "TOO_MANY_SIGNUPS")
+    assert r.headers["Retry-After"]
+
+
 def test_a_failing_mailer_does_not_change_the_answer():
     class Down:
         def send(self, email):

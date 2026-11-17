@@ -83,6 +83,10 @@ export function domainMessage(d: ErrorDetail): string {
       const minutes = Math.max(1, Math.ceil((d.retry_after ?? 60) / 60))
       return `Muitos pedidos de redefinição de senha. Tente de novo em ${minutes} minuto${minutes > 1 ? 's' : ''}.`
     }
+    case 'TOO_MANY_SIGNUPS': {
+      const minutes = Math.max(1, Math.ceil((d.retry_after ?? 60) / 60))
+      return `Muitas contas criadas a partir desta rede. Tente de novo em ${minutes} minuto${minutes > 1 ? 's' : ''}.`
+    }
     case 'INVALID_RESET_TOKEN':
       return 'Esse link não vale mais: ele expira em 30 minutos e funciona uma vez só. Peça um novo.'
     case 'EMAIL_TAKEN':

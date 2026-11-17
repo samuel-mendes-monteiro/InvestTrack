@@ -42,18 +42,23 @@ def drop_session_cookie(response: Response) -> None:
     responses={
         409: {"model": ErrorOut, "description": "Email already registered"},
         422: {"model": ErrorOut, "description": "Invalid email or weak password"},
+        429: {"model": ErrorOut, "description": "Too many sign-ups from this address"},
     },
 )
 def register(payload: Credentials, session: SessionDep, request: Request) -> UserOut:
     """Create an account. The first account adopts data from before v0.5."""
     try:
-        user = request.app.state.auth.register(session, payload.email, payload.password)
+        user = request.app.state.auth.register(
+            session, payload.email, payload.password, client_ip(request)
+        )
     except EmailTakenError as e:
         raise api_error(409, "EMAIL_TAKEN", e) from e
     except InvalidEmailError as e:
         raise api_error(422, "INVALID_EMAIL", e) from e
     except WeakPasswordError as e:
         raise api_error(422, "WEAK_PASSWORD", e) from e
+    except TooManyAttemptsError as e:
+        raise api_error(429, "TOO_MANY_SIGNUPS", e) from e
     return user_out(user)
 
 
