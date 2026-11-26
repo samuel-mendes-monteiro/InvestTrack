@@ -92,8 +92,12 @@ export function OperationFields({ operation, onClose }: { operation?: Operation;
   const update = useUpdateOperation()
   const mutation = operation ? update : create
 
+  // The date waits too: typed over in Chrome, it changes once per segment, and
+  // the year passes through 0002, 0020 and 0202. Asking for each queued half a
+  // dozen requests on the small server, and the price showed up late.
   const ticker = useDebounced(fields.ticker.trim().toUpperCase(), 400)
-  const suggestion = usePriceOn(typedPrice == null ? ticker : '', fields.date)
+  const date = useDebounced(fields.date, 400)
+  const suggestion = usePriceOn(typedPrice == null ? ticker : '', date)
   const suggested = suggestion.data ? priceTyped(suggestion.data.price) : ''
   const price = typedPrice ?? suggested
 

@@ -142,7 +142,8 @@ export function usePriceOn(ticker: string, day: string) {
     queryKey: ['price', ticker, day],
     queryFn: () =>
       call(api.GET('/api/prices/{ticker}', { params: { path: { ticker }, query: { date: day } } })),
-    enabled: TICKER.test(ticker) && day !== '',
+    // B3's history starts in 1986: an earlier year is a date still being typed.
+    enabled: TICKER.test(ticker) && day >= '1986-01-01',
     retry: false,
     staleTime: 5 * 60_000,
   })

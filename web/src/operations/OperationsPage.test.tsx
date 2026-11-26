@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { fakeApi } from '../test/fakeApi'
@@ -216,6 +216,30 @@ test("the price fills in with the ticker's close on the operation's day", async 
   await user.click(screen.getByRole('button', { name: 'Registrar' }))
   await vi.waitFor(() => expect(onClose).toHaveBeenCalled())
   expect((await api.sent('POST /operations'))[0].price).toBe('61.40')
+})
+
+test('typing a date asks for the price once, not on every keystroke', async () => {
+  const api = fakeApi({
+    'GET /prices/RAIL3': (request) => {
+      const day = new URL(request.url).searchParams.get('date')
+      return { body: { ticker: 'RAIL3', date: day, price: day === '2025-05-10' ? '17.85' : '14.70', source: 'CLOSE' } }
+    },
+  })
+  renderWithApp(<OperationForm onClose={vi.fn()} />)
+  await userEvent.type(screen.getByLabelText('Ticker'), 'RAIL3')
+  await screen.findByDisplayValue('14,70') // today's, before the date is changed
+  api.requests.length = 0
+
+  // What Chrome emits while 10/05/2025 is typed over the date, segment by
+  // segment: the year passes through 0002, 0020 and 0202 on its way.
+  const date = screen.getByLabelText('Data')
+  for (const value of ['2026-11-10', '2026-05-10', '0002-05-10', '0020-05-10', '0202-05-10', '2025-05-10']) {
+    fireEvent.change(date, { target: { value } })
+  }
+
+  expect(await screen.findByDisplayValue('17,85')).toBe(screen.getByLabelText(/^Preço unitário/))
+  const asked = api.requests.filter((r) => r.url.includes('/prices/'))
+  expect(asked.map((r) => new URL(r.url).searchParams.get('date'))).toEqual(['2025-05-10'])
 })
 
 test('a typed price wins over the suggestion, which can be brought back', async () => {
