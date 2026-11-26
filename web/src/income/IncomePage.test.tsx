@@ -63,16 +63,16 @@ test('choosing another year asks the API for its months', async () => {
 
 test('only manual income can be deleted', async () => {
   const api = routes({ 'DELETE /income/7': { status: 204 } })
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
   renderWithApp(<IncomePage />)
 
   const received = await screen.findByRole('table', { name: 'Recebidos' })
   expect(within(received).getAllByRole('button')).toHaveLength(1)
   await userEvent.click(within(received).getByRole('button', { name: 'Apagar provento #7' }))
 
-  expect(window.confirm).toHaveBeenCalledWith('Apagar o provento #7 (Dividendo de AAPL34 em 10/05/2026, R$ 7,00 líquido)?')
+  const dialog = screen.getByRole('dialog', { name: 'Apagar provento?' })
+  expect(dialog).toHaveTextContent('Dividendo de AAPL34 em 10/05/2026, R$ 7,00 líquido')
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apagar' }))
   await vi.waitFor(() => expect(api.requests.some((r) => r.method === 'DELETE')).toBe(true))
-  vi.restoreAllMocks()
 })
 
 test('registers manual income for a ticker from the portfolio', async () => {

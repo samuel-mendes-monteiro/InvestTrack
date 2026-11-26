@@ -8,6 +8,7 @@ import {
   type FixedIncomeInput,
   type Schemas,
 } from '../api/queries'
+import { useConfirm } from '../components/useConfirm'
 import { decimalField, quantity, todayIso } from '../format'
 import { FI_INDEXERS, FI_PRODUCTS } from '../labels'
 
@@ -44,12 +45,14 @@ export function FixedIncomeForm({ investment, onClose }: { investment?: FixedInc
   const create = useCreateFixedIncome()
   const update = useUpdateFixedIncome()
   const remove = useDeleteFixedIncome()
+  const confirm = useConfirm()
   const mutation = investment ? update : create
   const busy = mutation.isPending || remove.isPending
 
-  function deleteInvestment() {
+  async function deleteInvestment() {
     if (!investment) return
-    if (window.confirm(`Apagar a aplicação ${investment.name}, com os resgates dela?`)) {
+    const message = `${investment.name}, com os resgates dela. Isso não pode ser desfeito.`
+    if (await confirm({ title: 'Apagar aplicação?', message })) {
       remove.mutate(investment.id, { onSuccess: onClose })
     }
   }

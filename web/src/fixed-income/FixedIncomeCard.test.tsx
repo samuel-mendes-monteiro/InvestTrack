@@ -139,7 +139,6 @@ test('partial redemptions can be deleted from the dialog', async () => {
 
 test('deleting an investment is in the edit form, asks first and closes it', async () => {
   fakeApi({ 'GET /fixed-income': { body: [fixedIncome()] }, 'DELETE /fixed-income/1': { status: 204 } })
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   renderWithApp(<FixedIncomeCard />)
   const user = userEvent.setup()
 
@@ -150,9 +149,10 @@ test('deleting an investment is in the edit form, asks first and closes it', asy
   await user.click(screen.getByRole('button', { name: 'Editar CDB Banco X' }))
   await user.click(screen.getByRole('button', { name: 'Apagar aplicação' }))
 
-  expect(confirm).toHaveBeenCalledWith('Apagar a aplicação CDB Banco X, com os resgates dela?')
+  const dialog = screen.getByRole('dialog', { name: 'Apagar aplicação?' })
+  expect(dialog).toHaveTextContent('CDB Banco X, com os resgates dela')
+  await user.click(within(dialog).getByRole('button', { name: 'Apagar' }))
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  confirm.mockRestore()
 })
 
 test('while the CDI is syncing, totals are unknown and the list refetches by itself', async () => {
@@ -191,4 +191,20 @@ test('an investment can be edited from its row', async () => {
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   const [sent] = await api.sent('PUT /fixed-income/1')
   expect(sent).toMatchObject({ name: 'CDB Banco Y', product: 'CDB', rate: '110', amount: '5000' })
+})
+
+test('Esc on the delete question closes only the question, not the form under it', async () => {
+  const api = fakeApi({ 'GET /fixed-income': { body: [fixedIncome()] } })
+  renderWithApp(<FixedIncomeCard />)
+  const user = userEvent.setup()
+
+  await user.click(await screen.findByRole('button', { name: 'Editar CDB Banco X' }))
+  await user.click(screen.getByRole('button', { name: 'Apagar aplicação' }))
+  await user.keyboard('{Escape}')
+
+  expect(screen.queryByRole('dialog', { name: 'Apagar aplicação?' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Apagar aplicação' })).toBeInTheDocument() // form still open
+  await user.click(screen.getByRole('button', { name: 'Apagar aplicação' }))
+  await user.click(within(screen.getByRole('dialog', { name: 'Apagar aplicação?' })).getByRole('button', { name: 'Cancelar' }))
+  expect(api.requests.some((r) => r.method === 'DELETE')).toBe(false)
 })

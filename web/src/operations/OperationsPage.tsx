@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { useDeleteOperation, useFixedIncome, useOperations, type FixedIncome, type Operation } from '../api/queries'
+import { useConfirm } from '../components/useConfirm'
 import { ListIcon } from '../components/Icons'
 import { Metric } from '../components/Metric'
 import { Modal } from '../components/Modal'
@@ -86,6 +87,7 @@ export function OperationsPage() {
   // Not waited for: the trades show at once, and fixed income joins them when it arrives.
   const fixedIncome = useFixedIncome()
   const remove = useDeleteOperation()
+  const confirm = useConfirm()
   const [asset, setAsset] = useState('')
   const [editing, setEditing] = useState<Operation | null>(null)
   // By id: the dialogs read the refetched investment after each change.
@@ -140,9 +142,9 @@ export function OperationsPage() {
   const fiEditing = investments.find((f) => f.id === editingFi)
   const fiRedeeming = investments.find((f) => f.id === redeemingFi)
 
-  function confirmDelete(o: Operation) {
+  async function confirmDelete(o: Operation) {
     const what = `${OP_TYPES[o.op_type]} de ${quantity(o.quantity)} ${o.ticker} em ${brDate(o.date)}`
-    if (window.confirm(`Apagar a operação #${o.id} (${what})?`)) remove.mutate(o.id)
+    if (await confirm({ title: 'Apagar operação?', message: `${what}. Isso não pode ser desfeito.` })) remove.mutate(o.id)
   }
 
   return (

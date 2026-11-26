@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useDeleteIncome, useIncomes, useMonthlyIncome, useOperations, type Income } from '../api/queries'
+import { useConfirm } from '../components/useConfirm'
 import { Metric } from '../components/Metric'
 import { brDate, divideDecimal, sumDecimals } from '../format'
 import { usePrivateFormat } from '../privacy'
@@ -13,6 +14,7 @@ export function IncomePage() {
   const incomes = useIncomes()
   const operations = useOperations()
   const remove = useDeleteIncome()
+  const confirm = useConfirm()
   const [chosenYear, setChosenYear] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
 
@@ -34,9 +36,11 @@ export function IncomePage() {
   const monthCount = months.data?.length ?? 0
   const tickers = [...new Set((operations.data ?? []).map((o) => o.ticker))].sort()
 
-  function confirmDelete(i: Income) {
+  async function confirmDelete(i: Income) {
     const what = `${INCOME_TYPES[i.income_type]} de ${i.ticker} em ${brDate(i.date)}, ${brl(i.net)} líquido`
-    if (i.id != null && window.confirm(`Apagar o provento #${i.id} (${what})?`)) remove.mutate(i.id)
+    if (i.id == null) return
+    const id = i.id
+    if (await confirm({ title: 'Apagar provento?', message: `${what}. Isso não pode ser desfeito.` })) remove.mutate(id)
   }
 
   const addButton = (

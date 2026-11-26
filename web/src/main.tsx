@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import './index.css'
 import App from './App.tsx'
+import { ConfirmProvider } from './components/Confirm'
 
 // Before v1.0 the session token was kept in localStorage; it is now an
 // HttpOnly cookie, so drop the old copy instead of leaving it lying around.
@@ -21,7 +22,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <ConfirmProvider>
+          <App />
+        </ConfirmProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

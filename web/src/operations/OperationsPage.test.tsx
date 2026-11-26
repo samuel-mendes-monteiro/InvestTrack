@@ -164,14 +164,15 @@ test('deleting asks first, then refetches', async () => {
     'GET /stock-events': { body: [] },
     'DELETE /operations/2': { status: 204 },
   })
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   renderWithApp(<OperationsPage />)
 
   await userEvent.click(await screen.findByRole('button', { name: 'Apagar operação #2' }))
 
-  expect(confirm).toHaveBeenCalledWith('Apagar a operação #2 (Venda de 10 VALE3 em 01/04/2026)?')
+  const dialog = screen.getByRole('dialog', { name: 'Apagar operação?' })
+  expect(dialog).toHaveTextContent('Venda de 10 VALE3 em 01/04/2026')
+  expect(api.requests.some((r) => r.method === 'DELETE')).toBe(false) // nothing gone before the answer
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apagar' }))
   await vi.waitFor(() => expect(api.requests.filter((r) => r.method === 'GET' && r.url.endsWith('/operations'))).toHaveLength(2))
-  confirm.mockRestore()
 })
 
 test('a refused delete explains why', async () => {
@@ -183,10 +184,10 @@ test('a refused delete explains why', async () => {
       body: { detail: { code: 'DELETE_BREAKS_LATER_SALE', message: 'x', ticker: 'PETR4' } },
     },
   })
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
   renderWithApp(<OperationsPage />)
 
   await userEvent.click(await screen.findByRole('button', { name: 'Apagar operação #1' }))
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apagar' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Não foi possível apagar: Apagar essa operação deixaria uma venda posterior de PETR4',
   )

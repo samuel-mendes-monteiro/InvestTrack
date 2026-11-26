@@ -1912,3 +1912,33 @@ button.danger-solid {
 .topbar button.hide-values[aria-pressed='true'] {
   color: var(--accent);
 }
+
+/* --- Confirm dialog ------------------------------------------------------- */
+
+/* A question, not a form: narrower, and centered rather than near the top. */
+.backdrop:has(> .modal.confirm) {
+  align-items: center;
+}
+
+.modal.confirm {
+  width: min(400px, 100%);
+  animation: confirm-in 120ms ease-out;
+}
+
+.modal.confirm p {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+@keyframes confirm-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal.confirm {
+    animation: none;
+  }
+}
