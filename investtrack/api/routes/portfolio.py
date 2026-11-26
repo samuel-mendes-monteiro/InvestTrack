@@ -28,7 +28,9 @@ def price_on(
     user: UserDep,
     prices: PricesDep,
     market: MarketDep,
-    day: Annotated[date | None, Query(alias="date")] = None,
+    # B3's history starts in 1986; an earlier day (0001-01-03, say) is a typo,
+    # and a week back from it would not even be a date.
+    day: Annotated[date | None, Query(alias="date", ge=date(1986, 1, 1))] = None,
 ) -> PriceOut:
     """Price of a ticker on a day, to fill in a new operation.
 

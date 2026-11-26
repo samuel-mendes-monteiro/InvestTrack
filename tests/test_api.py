@@ -663,6 +663,15 @@ def test_price_on_an_earlier_day_is_that_close_or_the_one_before():
     assert bad.status_code == 422
 
 
+def test_price_on_a_day_before_b3s_history_is_refused():
+    # 0001-01-03 used to crash: a week back from it is before year 1.
+    with performance_client(HISTORY) as client:
+        ancient = client.get("/prices/PETR4", params={"date": "0001-01-03"})
+        first_day = client.get("/prices/PETR4", params={"date": "1986-01-01"})
+    assert ancient.status_code == 422
+    assert first_day.status_code == 404  # allowed, just nothing stored that far back
+
+
 LONG_HISTORY = StaticMarketData(
     closes={
         "PETR4": {
